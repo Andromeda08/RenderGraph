@@ -275,9 +275,12 @@ private:
         std::set<Id_t> nodesIncludedInTasks;
         for (const auto& node : nodes)
         {
-            if (!parallelizableTasks.contains(node->mId) &&
-                !nodesIncludedInTasks.contains(node->mId) &&
-                chancesForParallelization <= parallelTaskCount)
+            if (nodesIncludedInTasks.contains(node->mId))
+            {
+                continue;
+            }
+
+            if (!parallelizableTasks.contains(node->mId) && chancesForParallelization <= parallelTaskCount)
             {
                 RGTask basicTask = {
                     .pass      = node,
@@ -288,6 +291,7 @@ private:
                 continue;
             }
 
+            // Try to find a task to run in parallel.
             const auto parallelizableNodes = parallelizableTasks[node->mId]
                 | std::views::filter([&](const Id_t otherId){ return mRenderGraph->getPassById(otherId)->flags.async; })
                 | std::ranges::to<std::vector<Id_t>>();
