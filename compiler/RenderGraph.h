@@ -1,9 +1,17 @@
 #pragma once
+
+#include <fstream>
+
 #include "InputData.h"
 
+using Id_t = int32_t;
+
+// =======================================
+// Render Graph : Data Types
+// =======================================
 struct Edge
 {
-    int32_t     id;
+    Id_t        id;
     Pass*       src;
     std::string srcRes;
     Pass*       dst;
@@ -13,20 +21,18 @@ struct Edge
 class RenderGraph
 {
 public:
-    ~RenderGraph()
+    /** Add a Pass to the RenderGraph */
+    Pass* addPass(std::unique_ptr<Pass>&& vtx)
     {
-        for (const auto* vertex : mVertices)
-        {
-            delete vertex;
-        }
+        mVertices.push_back(std::move(vtx));
+        return mVertices.back().get();
     }
 
-    Pass* addPass(Pass* vtx)
-    {
-        mVertices.push_back(vtx);
-        return vtx;
-    }
+    bool deletePass(Id_t passId);
 
+    /** Insert an edge between pass resources.
+     * @return Success value
+     */
     bool insertEdge(Pass* src, const std::string& srcRes, Pass* dst, const std::string& dstRes)
     {
         if (src->mId == dst->mId) return false;
@@ -53,11 +59,9 @@ public:
         return true;
     }
 
-    bool deleteEdge(const Edge& edge)
-    {
-        return deleteEdge(edge.src, edge.srcRes, edge.dst, edge.dstRes);
-    }
-
+    /** Delete an edge between pass resources.
+     * @return Success value
+     */
     bool deleteEdge(Pass* src, const std::string& srcRes, Pass* dst, const std::string& dstRes)
     {
         if (src->mId == dst->mId) return false;
@@ -82,13 +86,12 @@ public:
         return true;
     }
 
-    Pass* getPassById(const int32_t id) const noexcept
+    /** Delete an edge between pass resources.
+     * @return Success value
+     */
+    bool deleteEdge(const Edge& edge)
     {
-        const auto pass = std::ranges::find_if(mVertices, [&id](const Pass* p){ return id == p->mId; });
-        return pass == std::end(mVertices)
-             ? nullptr
-             : *pass;
-
+        return deleteEdge(edge.src, edge.srcRes, edge.dst, edge.dstRes);
     }
 
     bool containsEdge(const Pass* src, const Pass* dst) noexcept
@@ -111,8 +114,68 @@ public:
         return containsEdge(a, b) || containsEdge(b, a);
     }
 
-    std::vector<Pass*> mVertices;
-    std::vector<Edge>  mEdges;
+    // =======================================
+    // Getters
+    // =======================================
+    Pass* getPassById(const Id_t id) const noexcept
+    {
+        const auto pass = std::ranges::find_if(mVertices, [&id](const auto& p){ return id == p->mId; });
+        return pass == std::end(mVertices)
+             ? nullptr
+             : pass->get();
+    }
+
+    const std::vector<PassPtr>& getVertices() const { return mVertices; }
+    const std::vector<Edge>&    getEdges()    const { return mEdges;    }
+
+private:
+    friend class RenderGraphCompiler;
+
+    static RenderGraph createCopy(const RenderGraph& renderGraph)
+    {
+        RenderGraph copyGraph;
+
+        for (const auto& node : renderGraph.mVertices)
+        {
+            auto* pass = copyGraph.addPass(std::make_unique<Pass>());
+            pass->dependencies = node->dependencies;
+            pass->name = node->name;
+            pass->mId = node->mId;
+            pass->flags = node->flags;
+        }
+
+        for (const auto& edge : renderGraph.mEdges)
+        {
+            auto* newSrc = copyGraph.getPassById(edge.src->mId);
+            auto* newDst = copyGraph.getPassById(edge.dst->mId);
+            copyGraph.insertEdge(newSrc, edge.srcRes, newDst, edge.dstRes);
+        }
+
+        return copyGraph;
+    }
+
+    void dumpDOT(const std::string& fileName) const
+    {
+        std::vector<std::string> output = {"digraph {"};
+        for (const auto& start : mVertices)
+        {
+            for (const auto& endVtx : start->mOutgoingEdges)
+            {
+                auto* end = dynamic_cast<Pass*>(endVtx);
+                output.emplace_back(std::format("\"{}\" -> \"{}\"", start->name, end->name));
+            }
+        }
+        output.emplace_back("}");
+
+        std::ofstream file(fileName);
+        for (const auto& s : output)
+        {
+            file << s << '\n';
+        }
+    }
+
+    std::vector<PassPtr> mVertices;
+    std::vector<Edge>    mEdges;
 };
 
 inline RenderGraph* createExampleGraph()

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -10,6 +11,7 @@
 // =======================================
 // Constants
 // =======================================
+constexpr int32_t          rgInvalidId    = -1;
 constexpr std::string_view rgRootPassName = "Root";
 
 // =======================================
@@ -41,7 +43,7 @@ enum class ResourceType
  */
 struct Resource
 {
-    int32_t      id = -1;
+    int32_t      id = rgInvalidId;
     std::string  name;
     ResourceType type;
     AccessType   access;
@@ -69,13 +71,15 @@ struct Pass final : Vertex
     std::vector<Resource>   dependencies;
 };
 
+using PassPtr = std::unique_ptr<Pass>;
+
 namespace Passes
 {
-    inline Pass* computeAmbientOcclusion()
+    inline PassPtr computeAmbientOcclusion()
     {
         using enum ResourceType;
         using enum AccessType;
-        auto* pass = new Pass();
+        auto pass = std::make_unique<Pass>();
 
         pass->mId = IdSequence::next();
         pass->name = "Ambient Occlusion Pass";
@@ -93,11 +97,11 @@ namespace Passes
         return pass;
     }
 
-    inline Pass* graphicsGBufferPass()
+    inline PassPtr graphicsGBufferPass()
     {
         using enum ResourceType;
         using enum AccessType;
-        auto* pass = new Pass();
+        auto pass = std::make_unique<Pass>();
 
         pass->mId = IdSequence::next();
         pass->name = "G-Buffer Pass";
@@ -114,11 +118,11 @@ namespace Passes
         return pass;
     }
 
-    inline Pass* graphicsLightingPass()
+    inline PassPtr graphicsLightingPass()
     {
         using enum ResourceType;
         using enum AccessType;
-        auto* pass = new Pass();
+        auto pass = std::make_unique<Pass>();
 
         pass->mId = IdSequence::next();
         pass->name = "Lighting Pass";
@@ -135,11 +139,11 @@ namespace Passes
         return pass;
     }
 
-    inline Pass* utilCompositionPass()
+    inline PassPtr utilCompositionPass()
     {
         using enum ResourceType;
         using enum AccessType;
-        auto* pass = new Pass();
+        auto pass = std::make_unique<Pass>();
 
         pass->mId = IdSequence::next();
         pass->name = "Composition Pass";
@@ -155,11 +159,11 @@ namespace Passes
         return pass;
     }
 
-    inline Pass* sentinelPresentPass()
+    inline PassPtr sentinelPresentPass()
     {
         using enum ResourceType;
         using enum AccessType;
-        auto* pass = new Pass();
+        auto pass = std::make_unique<Pass>();
 
         pass->mId = IdSequence::next();
         pass->name = "Present Pass";
@@ -175,11 +179,11 @@ namespace Passes
         return pass;
     }
 
-    inline Pass* sentinelBeginPass()
+    inline PassPtr sentinelBeginPass()
     {
         using enum ResourceType;
         using enum AccessType;
-        auto* pass = new Pass();
+        auto pass = std::make_unique<Pass>();
 
         pass->mId = IdSequence::next();
         pass->name = rgRootPassName;

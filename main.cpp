@@ -17,7 +17,10 @@ int main()
         return 1;
     }
 
-    const RenderGraphCompiler compiler(renderGraph);
+    constexpr RGCompilerOptions compilerOptions = {
+        .allowParallelization = true,
+    };
+    const RenderGraphCompiler compiler(renderGraph, compilerOptions);
     auto result = compiler.compile();
 
     return 0;
