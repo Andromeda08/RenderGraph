@@ -28,9 +28,15 @@ enum class AccessType
 
 enum class ResourceType
 {
+    Unknown,
     Image,
     Buffer,
     External,
+};
+
+struct ResourceFlags
+{
+    bool dontOptimize = false;  // Don't consider this resource during Resource Optimization phase.
 };
 
 /**
@@ -43,10 +49,11 @@ enum class ResourceType
  */
 struct Resource
 {
-    int32_t      id = rgInvalidId;
-    std::string  name;
-    ResourceType type;
-    AccessType   access;
+    int32_t         id = rgInvalidId;
+    std::string     name;
+    ResourceType    type;
+    AccessType      access;
+    ResourceFlags   flags = {};
 };
 
 // =======================================

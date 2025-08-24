@@ -130,6 +130,7 @@ public:
 
 private:
     friend class RenderGraphCompiler;
+    friend class RenderGraphResourceOptimizer;
 
     static RenderGraph createCopy(const RenderGraph& renderGraph)
     {

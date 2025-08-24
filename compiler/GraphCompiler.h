@@ -1,7 +1,9 @@
 #pragma once
 
 #include <expected>
+#include <optional>
 #include <ranges>
+#include <sstream>
 
 #include "RenderGraph.h"
 
@@ -59,13 +61,378 @@ using Node_t = Pass*;
     if (!compilerResult.has_value()) return createErrorOutput(compilerResult)
 
 // =======================================
+// Render Graph Resource Optimizer : Data
+// =======================================
+constexpr bool isOptimizableResource(const ResourceType resourceType)
+{
+    return resourceType == ResourceType::Image;
+}
+
+struct ConsumerInfo
+{
+    Id_t        nodeId     = rgInvalidId;
+    int32_t     nodeIdx    = -1;
+    std::string nodeName;
+    Id_t        resourceId = rgInvalidId;
+    std::string resourceName;
+    AccessType  access     = AccessType::None;
+    Pass*       node       = nullptr;
+};
+
+struct ResourceInfo
+{
+    Id_t                      originNodeId     = rgInvalidId;
+    int32_t                   originNodeIdx    = -1;
+    Pass*                     originNode       = nullptr;
+    Id_t                      originResourceId = rgInvalidId;
+    Resource*                 originResource   = nullptr;
+    AccessType                originAccess     = AccessType::None;
+    ResourceType              type             = ResourceType::Unknown;
+    bool                      optimizable      = true;
+    std::vector<ConsumerInfo> consumers        = {};
+
+    static ResourceInfo createFrom(Pass* pass, Resource& resource, const int32_t execOrder)
+    {
+        return {
+            .originNodeId       = pass->mId,
+            .originNodeIdx      = execOrder,
+            .originNode         = pass,
+            .originResourceId   = resource.id,
+            .originResource     = &resource,
+            .originAccess       = resource.access,
+            .type               = resource.type,
+            .optimizable        = isOptimizableResource(resource.type),
+            .consumers          = {},
+        };
+    }
+};
+
+struct UsagePoint
+{
+    int32_t     point      = {};
+    int32_t     userResId  = rgInvalidId;
+    std::string usedAs;
+    int32_t     userNodeId = rgInvalidId;
+    std::string usedBy;
+    AccessType  access     = AccessType::None;
+
+    UsagePoint() = default;
+
+    explicit UsagePoint(const ConsumerInfo& consumerInfo)
+    {
+        point      = consumerInfo.nodeIdx;
+        userResId  = consumerInfo.resourceId;
+        userNodeId = consumerInfo.nodeId;
+        access     = consumerInfo.access;
+    }
+
+    explicit UsagePoint(const ResourceInfo& resourceInfo)
+    {
+        point      = resourceInfo.originNodeIdx;
+        userResId  = resourceInfo.originResourceId;
+        usedAs     = resourceInfo.originResource->name;
+        userNodeId = resourceInfo.originNodeId;
+        usedBy     = resourceInfo.originNode->name;
+        access     = resourceInfo.originResource->access;
+    }
+};
+
+inline bool operator<(const UsagePoint& lhs, const UsagePoint& rhs)
+{
+    return lhs.point < rhs.point;
+}
+
+inline bool operator==(const UsagePoint& lhs, const UsagePoint& rhs)
+{
+    return lhs.point == rhs.point;
+}
+
+struct Range
+{
+    int32_t start;
+    int32_t end;
+
+    explicit Range(const std::set<UsagePoint>& points)
+    {
+        const auto min = std::min_element(std::begin(points), std::end(points));
+        const auto max = std::max_element(std::begin(points), std::end(points));
+
+        start = min->point;
+        end = max->point;
+
+        validate();
+    }
+
+    Range(const int32_t a, const int32_t b): start(a), end(b)
+    {
+        validate();
+    }
+
+    bool overlaps(const Range& other) const
+    {
+        return std::max(start, other.start) <= std::min(end, other.end);
+    }
+
+private:
+    void validate() const
+    {
+        if (start > end)
+        {
+            throw std::runtime_error(std::format("Range starting point {} is greater than the end point {}", start, end));
+        }
+    }
+};
+
+struct RGOptResource
+{
+    int32_t              id;
+    std::set<UsagePoint> usagePoints;
+    Resource             originalResource;
+    ResourceType         type;
+
+    Range getUsageRange() const
+    {
+        return Range(usagePoints);
+    }
+
+    std::optional<UsagePoint> getUsagePoint(const int32_t value) const
+    {
+        const auto find = std::ranges::find_if(usagePoints, [&](const UsagePoint& up){ return up.point == value; });
+        return (find == std::end(usagePoints))
+            ? std::nullopt
+            : std::make_optional(*find);
+    }
+
+    bool insertUsagePoints(const std::set<UsagePoint>& points)
+    {
+        // Validation for occupied usage points
+        std::vector<UsagePoint> intersection;
+        std::set_intersection(std::begin(usagePoints), std::end(usagePoints), std::begin(points), std::end(points), std::back_inserter(intersection));
+
+        if (!intersection.empty())
+        {
+            return false;
+        }
+
+        for (const auto& point: points)
+        {
+            usagePoints.insert(point);
+        }
+
+        return true;
+    }
+};
+
+// =======================================
 // Render Graph Resource Optimizer
 // =======================================
+
+struct RGResOptOutput
+{
+    std::vector<RGOptResource>  generatedResources;
+
+    // Input
+    std::vector<Resource>       originalResources;
+
+    // Statistics
+    int32_t nonOptimizables = 0;
+    int32_t reduction       = 0;
+    int32_t preCount        = 0;
+    int32_t postCount       = 0;
+    Range   timelineRange   = { 0, 0 };
+};
+
 class RenderGraphResourceOptimizer
 {
 public:
+    explicit RenderGraphResourceOptimizer(const RenderGraph* renderGraph)
+    : mRenderGraph(renderGraph)
+    {
+    }
+
+    RGCompilerResult<RGResOptOutput> run() const
+    {
+        const auto R = evaluateRequiredResources();
+        std::vector<RGOptResource> generatedResources;
+
+        int32_t nonOptmizeableCount = 0;
+        for (const auto& res : R)
+        {
+            RGOptResource resource = {
+                .id               = IdSequence::next(),
+                .usagePoints      = {},
+                .originalResource = *res.originResource,
+                .type             = res.type
+            };
+
+            auto& usagePoints = resource.usagePoints;
+            usagePoints = getUsagePointsForResourceInfo(res);
+
+            Range incomingRange(usagePoints);
+            if (!res.optimizable || res.originResource->flags.dontOptimize) {
+                generatedResources.push_back(resource);
+                nonOptmizeableCount++;
+                continue;
+            }
+
+            // Case: No generated resources yet
+            if (generatedResources.empty()) {
+                generatedResources.push_back(resource);
+                continue;
+            }
+
+            // Case: There are generated resources, try inserting into an existing one
+            bool wasInserted = false;
+            for (auto& timeline : generatedResources) {
+                if (const Range currentRange = timeline.getUsageRange();
+                    !currentRange.overlaps(incomingRange))
+                {
+                    wasInserted = timeline.insertUsagePoints(usagePoints);
+                    if (wasInserted) {
+                        break;
+                    }
+                }
+            }
+
+            // Case: Failed to Insert
+            if (!wasInserted) {
+                generatedResources.push_back(resource);
+            }
+        }
+
+        RGResOptOutput output = {
+            .generatedResources = generatedResources,
+            .originalResources  = R
+                | std::views::transform([](const auto& resInfo){ return *resInfo.originResource; })
+                | std::ranges::to<std::vector<Resource>>(),
+            .nonOptimizables    = nonOptmizeableCount,
+            .reduction          = static_cast<int32_t>(R.size() - generatedResources.size()),
+            .preCount           = static_cast<int32_t>(R.size()),
+            .postCount          = static_cast<int32_t>(generatedResources.size()),
+            .timelineRange      = { 0, static_cast<int32_t>(mRenderGraph->mVertices.size()) },
+        };
+
+        return output;
+    }
+
+    static void exportResult(RGResOptOutput& result, const std::vector<Pass*>& execOrder)
+    {
+        std::vector<std::string> csv;
+        std::stringstream sstr;
+        sstr << "Optimized Resources,\n"
+             << std::format("Reduction: {},", result.reduction)
+             << std::format("Non-optimizable: {},", result.nonOptimizables);
+        csv.push_back(sstr.str());
+        sstr.str(std::string());
+
+        sstr << ",";
+        for (int32_t i = 0; i < result.timelineRange.end; i++)
+        {
+            // sstr << std::format("Node #{},", i);
+            sstr << std::format("{},", execOrder[i]->name);
+        }
+        csv.push_back(sstr.str());
+        sstr.str(std::string());
+
+        for (int32_t i = 0; i < result.generatedResources.size(); i++)
+        {
+            auto& resource = result.generatedResources[i];
+            auto range = resource.getUsageRange();
+
+            sstr << std::format("Resource #{},", i);
+            for (int32_t j = 0; j < result.timelineRange.end; j++)
+            {
+                if (auto usagePoint = resource.getUsagePoint(j); usagePoint.has_value())
+                {
+                    auto point = usagePoint.value();
+                    sstr << ((range.start == range.end) ? std::format("[{}]", point.usedAs)
+                        : (j == range.start) ? std::format("[{}", point.usedAs)
+                        : (j == range.end) ? std::format("{}]", point.usedAs)
+                        : point.usedAs);
+                }
+                sstr << ",";
+            }
+            csv.push_back(sstr.str());
+            sstr.str(std::string());
+        }
+
+        std::fstream fs("resourceOptimizerResult.csv");
+        fs.open("resourceOptimizerResult.csv", std::ios_base::out);
+        std::ostream_iterator<std::string> os_it(fs, "\n");
+        std::ranges::copy(csv, os_it);
+        fs.close();
+    }
 
 private:
+    std::vector<ResourceInfo> evaluateRequiredResources() const noexcept
+    {
+        std::vector<ResourceInfo> result;
+
+        // Get all output resources
+        for (const auto& [i, node] : std::views::enumerate(mRenderGraph->mVertices))
+        {
+            for (auto& resource : node->dependencies | std::views::filter([](const Resource& res){ return res.access == AccessType::Write; }))
+            {
+                result.push_back(ResourceInfo::createFrom(node.get(), resource, static_cast<int32_t>(i)));
+            }
+        }
+
+        // Find resource consumers
+        for (auto& resourceInfo : result)
+        {
+            for (const auto& edge : mRenderGraph->mEdges)
+            {
+                if (   resourceInfo.originNodeId         != edge.src->mId
+                    || resourceInfo.originNodeId         == edge.dst->mId
+                    || resourceInfo.originResource->name != edge.srcRes     // TODO: Prefer ID
+                ) continue;
+
+                int32_t consumerNodeId     = edge.dst->mId;
+                const auto consumerResource = std::ranges::find_if(edge.dst->dependencies, [&](const Resource& res){
+                    return res.name == edge.dstRes;
+                });
+                const int32_t consumerResourceId = consumerResource->id;
+
+                const auto it = std::ranges::find_if(mRenderGraph->mVertices, [&](const auto& pass){
+                    return pass->mId == consumerNodeId;
+                });
+
+                const auto consumerNodeIdx = static_cast<int32_t>(std::distance(std::begin(mRenderGraph->mVertices), it));
+                Pass* consumerNode = mRenderGraph->mVertices[consumerNodeIdx].get();
+
+                ConsumerInfo consumerInfo = {
+                    .nodeId       = consumerNodeId,
+                    .nodeIdx      = consumerNodeIdx,
+                    .nodeName     = consumerNode->name,
+                    .resourceId   = consumerResourceId,
+                    .resourceName = consumerResource->name,
+                    .access       = consumerResource->access,
+                    .node         = consumerNode,
+                };
+
+                resourceInfo.consumers.push_back(consumerInfo);
+            }
+        }
+
+        return result;
+    }
+
+    static std::set<UsagePoint> getUsagePointsForResourceInfo(const ResourceInfo& resourceInfo)
+    {
+        std::set<UsagePoint> usagePoints;
+
+        const UsagePoint producerUsagePoint(resourceInfo);
+        usagePoints.insert(producerUsagePoint);
+
+        for (auto& consumer : resourceInfo.consumers) {
+            UsagePoint consumerPoint(consumer);
+            usagePoints.insert(consumerPoint);
+        }
+
+        return usagePoints;
+    }
+
+    const RenderGraph* mRenderGraph;
 };
 
 // =======================================
@@ -84,8 +451,12 @@ public:
     {
         RGCompilerOutput output {};
 
+        // Preamble Phase
+
         const auto cullNodesResult = cullNodes();
         rg_CHECK_COMPILER_STEP_RESULT(cullNodesResult);
+
+        // Task Scheduling Phase
 
         const auto serialExecutionOrderResult = getSerialExecutionOrder(cullNodesResult.value());
         rg_CHECK_COMPILER_STEP_RESULT(serialExecutionOrderResult);
@@ -95,6 +466,13 @@ public:
 
         const auto finalTaskOrderResult = getFinalTaskOrder(serialExecutionOrderResult.value(), parallelizableTasksResult.value());
         rg_CHECK_COMPILER_STEP_RESULT(finalTaskOrderResult);
+
+        // Resource Optimizing Phase
+
+        auto resourceOptimizerResult = optimizeResources(cullNodesResult.value());
+        rg_CHECK_COMPILER_STEP_RESULT(resourceOptimizerResult);
+
+        RenderGraphResourceOptimizer::exportResult(resourceOptimizerResult.value(), toNodePtrList(serialExecutionOrderResult.value()));
 
         return output;
     }
@@ -312,7 +690,7 @@ private:
             parallelTaskCount++;
         }
 
-        /** Debug print for Tasks */
+        /** Debug print for Tasks
         for (const auto& [i, task] : std::views::enumerate(tasks))
         {
             std::cout << std::format("Task #{} > {}", i, task.pass->name);
@@ -322,6 +700,7 @@ private:
             }
             std::cout << std::endl;
         }
+        */
 
         return tasks;
     }
@@ -330,6 +709,25 @@ private:
     // Render Graph Compiler Phase : Resources
     // =======================================
 
+    /** Render Graph Compiler : Step 3.1
+     * Run the resource optimization algorithm.
+     * @return Optimizer output.
+     */
+    RGCompilerResult<RGResOptOutput> optimizeResources(const std::vector<Id_t>& nodeIds) const noexcept
+    {
+        return RenderGraphResourceOptimizer(mRenderGraph).run();
+    }
+
+    /** Render Graph Compiler : Step 3.2
+     * Create resource templates from optimizer result.
+     * @return List of templates for the optimized resources.
+     */
+    RGCompilerResult<std::vector<RGResourceTemplate>> getResourceTemplates(const RGResOptOutput& optimizerOutput)
+    {
+        std::vector<RGResourceTemplate> templates;
+
+        return templates;
+    }
 
 private:
     template <class T>
@@ -380,6 +778,7 @@ private:
         return beginPass->get();
     }
 
+private:
     RenderGraph* mRenderGraph {nullptr};
 
     const RGCompilerOptions mOptions;
