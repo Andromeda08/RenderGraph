@@ -1,6 +1,10 @@
 #pragma once
 
 #include <fstream>
+#include <memory>
+#include <ranges>
+#include <string>
+#include <vector>
 
 #include "InputData.h"
 
@@ -9,6 +13,12 @@ using Id_t = int32_t;
 // =======================================
 // Render Graph : Data Types
 // =======================================
+struct RGTask
+{
+    Pass* pass       = nullptr;
+    Pass* asyncPass  = nullptr;
+};
+
 struct Edge
 {
     Id_t        id;
@@ -40,14 +50,12 @@ public:
         if (const auto findSrcRes = std::ranges::find_if(src->dependencies, [&](const Resource& res){ return res.name == srcRes; });
             findSrcRes == std::end(src->dependencies))
         {
-            std::cerr << std::format("Pass {} has no Resource {}", src->name, srcRes) << std::endl;
             return false;
         }
 
         if (const auto findDstRes = std::ranges::find_if(dst->dependencies, [&](const Resource& res){ return res.name == dstRes; });
             findDstRes == std::end(dst->dependencies))
         {
-            std::cerr << std::format("Pass {} has no Resource {}", dst->name, dstRes) << std::endl;
             return false;
         }
 

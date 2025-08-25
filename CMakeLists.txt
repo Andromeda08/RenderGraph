@@ -6,12 +6,19 @@ set(CMAKE_CXX_STANDARD 23)
 add_subdirectory(external/json)
 
 add_executable(graphCompilerPrototype main.cpp
-    compiler/InputData.h
-    compiler/IdSequence.h
-    compiler/Graph.h
-    compiler/RenderGraph.h
-    compiler/GraphCompiler.h
-    compiler/RenderGraphExport.h
+    renderGraph/InputData.h
+    renderGraph/IdSequence.h
+    renderGraph/Graph.h
+    renderGraph/RenderGraph.h
+    renderGraph/compiler/RGCompiler.h
+    renderGraph/export/RenderGraphExport.h
+    renderGraph/compiler/RGCompilerTypes.h
+    renderGraph/compiler/RGResourceOpt.h
+    renderGraph/export/RGCompilerExport.h
+    renderGraph/compiler/RGResourceOptTypes.h
+    renderGraph/export/RenderGraphExport.cpp
+    renderGraph/export/RGCompilerExport.cpp
+    renderGraph/Graph.cpp
 )
 
 target_link_libraries(graphCompilerPrototype PRIVATE nlohmann_json::nlohmann_json)

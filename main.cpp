@@ -1,9 +1,9 @@
 #include <iostream>
 #include <stdexcept>
 
-#include "compiler/GraphCompiler.h"
-#include "compiler/InputData.h"
-#include "compiler/RenderGraph.h"
+#include "renderGraph/InputData.h"
+#include "renderGraph/RenderGraph.h"
+#include "renderGraph/compiler/RGCompiler.h"
 
 int main()
 {

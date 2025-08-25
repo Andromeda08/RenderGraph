@@ -19,7 +19,6 @@ constexpr std::string_view rgRootPassName = "Root";
 // Resources
 // =======================================
 
-// Can AccessType be inferred in an easy way?
 enum class AccessType
 {
     Read,
