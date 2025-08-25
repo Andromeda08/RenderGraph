@@ -591,7 +591,7 @@ public:
 
         for (const auto& [i, task] : std::views::enumerate(output.phaseOutputs->taskOrder))
         {
-            out.push_back(std::format("\t{} : {}, {}", task.pass->name, i, i + 1));
+            out.push_back(std::format("\t\t{} : {}, {}", task.pass->name, i, i + 1));
         }
 
         out.emplace_back("\tsection Async");
@@ -599,13 +599,13 @@ public:
         {
             if (task.asyncPass)
             {
-                out.push_back(std::format("\t{} : {}, {}", task.asyncPass->name, i, i + 1));
+                out.push_back(std::format("\t\t{} :crit, {}, {}", task.asyncPass->name, i, i + 1));
             }
         }
 
         for (const auto& [i, resource] : std::views::enumerate(output.phaseOutputs->resourceOptimizer.generatedResources))
         {
-            out.emplace_back(std::format("section Resource #{}", i));
+            out.emplace_back(std::format("\tsection Resource #{}", i));
             auto usagePoints = std::ranges::to<std::vector<UsagePoint>>(resource.usagePoints);
 
             for (int32_t j = 1; j < usagePoints.size(); j++)
@@ -634,7 +634,7 @@ public:
 
             for (const auto& [usedAs, range] : usageRanges)
             {
-                out.emplace_back(std::format("{} : {}, {}", usedAs, range.start, (range.start == range.end) ? range.start + 1 : range.end));
+                out.emplace_back(std::format("\t\t{} : {}, {}", usedAs, range.start, range.end + 1));
             }
         }
 
