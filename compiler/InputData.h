@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 #include "Graph.h"
 #include "Utils.h"
@@ -25,6 +26,11 @@ enum class AccessType
     Write,
     None,
 };
+NLOHMANN_JSON_SERIALIZE_ENUM(AccessType, {
+    {AccessType::Read,  "read" },
+    {AccessType::Write, "write"},
+    {AccessType::None,  "none" },
+})
 
 enum class ResourceType
 {

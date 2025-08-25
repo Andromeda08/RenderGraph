@@ -4,8 +4,10 @@
 #include <optional>
 #include <ranges>
 #include <sstream>
+#include <nlohmann/json.hpp>
 
 #include "RenderGraph.h"
+#include "RenderGraphExport.h"
 
 // =======================================
 // Enum Types
@@ -20,32 +22,6 @@ enum class RGCompilerError
 };
 
 // =======================================
-// Data Types
-// =======================================
-
-struct RGCompilerOptions
-{
-    bool allowParallelization = false;
-};
-
-struct RGCompilerOutput
-{
-    bool                     hasFailed  = false;
-    RGCompilerError          failReason = RGCompilerError::None;
-};
-
-struct RGTask
-{
-    Pass* pass       = nullptr;
-    Pass* asyncPass  = nullptr;
-};
-
-struct RGPassTemplate {};
-struct RGResourceTemplate {};
-struct RGBarrierTemplate {};
-struct RGSyncPointTemplate {};
-
-// =======================================
 // Using Defines
 // =======================================
 
@@ -53,12 +29,6 @@ template <class T>
 using RGCompilerResult = std::expected<T, RGCompilerError>;
 
 using Node_t = Pass*;
-
-// =======================================
-// Utility Macros
-// =======================================
-#define rg_CHECK_COMPILER_STEP_RESULT(compilerResult) \
-    if (!compilerResult.has_value()) return createErrorOutput(compilerResult)
 
 // =======================================
 // Render Graph Resource Optimizer : Data
@@ -136,6 +106,7 @@ struct UsagePoint
         access     = resourceInfo.originResource->access;
     }
 };
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(UsagePoint, point, userResId, usedAs, userNodeId, usedBy, access);
 
 inline bool operator<(const UsagePoint& lhs, const UsagePoint& rhs)
 {
@@ -315,7 +286,7 @@ public:
         return output;
     }
 
-    static void exportResult(RGResOptOutput& result, const std::vector<Pass*>& execOrder)
+    [[deprecated]] static void exportResult(RGResOptOutput& result, const std::vector<Pass*>& execOrder)
     {
         std::vector<std::string> csv;
         std::stringstream sstr;
@@ -436,6 +407,163 @@ private:
 };
 
 // =======================================
+// Data Types
+// =======================================
+
+struct RGCompilerOptions
+{
+    bool allowParallelization = false;
+};
+
+struct RGTask
+{
+    Pass* pass       = nullptr;
+    Pass* asyncPass  = nullptr;
+};
+
+struct RGPassTemplate {};
+struct RGResourceTemplate {};
+struct RGBarrierTemplate {};
+struct RGSyncPointTemplate {};
+
+struct RGCompilerPhaseOutputs
+{
+    std::vector<Id_t>                   cullNodes;
+    std::vector<Id_t>                   serialExecutionOrder;
+    std::map<Id_t, std::vector<Id_t>>   parallelizableNodes;
+    std::vector<RGTask>                 taskOrder;
+    RGResOptOutput                      resourceOptimizer;
+};
+
+struct RGCompilerOutput
+{
+    bool                                  hasFailed     = false;
+    RGCompilerError                       failReason    = RGCompilerError::None;
+    std::optional<RGCompilerPhaseOutputs> phaseOutputs  = std::nullopt;
+    RGCompilerOptions                     options       = {};
+};
+
+// =======================================
+// Compiler Output Exporter
+// =======================================
+class RenderGraphCompilerExport
+{
+public:
+    static void exportCompilerOutput(const RGCompilerOutput& output, const RenderGraph* renderGraph)
+    {
+        if (!output.phaseOutputs.has_value())
+        {
+            return;
+        }
+
+        const auto results = output.phaseOutputs.value();
+
+        using namespace nlohmann;
+        json graphExport = {
+            { "compilerOptions", {
+                { "allowParallelization", output.options.allowParallelization },
+            }},
+            { "inputGraph", {
+                { "nodes", json::array() },
+                { "edges", json::array() },
+            }},
+            { "serialExecutionOrder", json::array() },
+            { "parallelizableNodes", json::array() },
+            {"generatedTasks", json::array() },
+            { "resourceOptimizerResult", {
+                { "timelineLength", results.resourceOptimizer.timelineRange.end },
+                { "preCount", results.resourceOptimizer.preCount },
+                { "postCount", results.resourceOptimizer.postCount },
+                { "reduction", results.resourceOptimizer.reduction },
+                { "resources", json::array() },
+            }}
+        };
+
+        // graphExport["inputGraph"]["nodes"]
+        for (const auto& [i, node] : std::views::enumerate(renderGraph->mVertices))
+        {
+            graphExport["inputGraph"]["nodes"].push_back({
+                { "id", node->mId },
+                {"name", node->name },
+                { "dependencies", json::array() },
+            });
+            for (const auto& resource : node->dependencies)
+            {
+                graphExport["inputGraph"]["nodes"][i]["dependencies"].push_back({
+                    { "id", resource.id },
+                    { "name", resource.name },
+                    { "type", resource.type },
+                    { "access", resource.access },
+                });
+            }
+        }
+
+        // graphExport["inputGraph"]["edges"]
+        for (const auto& edge : renderGraph->mEdges)
+        {
+            graphExport["inputGraph"]["edges"].push_back({
+                { "id", edge.id },
+                { "srcNodeId", edge.src->mId },
+                { "srcRes", edge.srcRes },
+                { "dstNodeId", edge.dst->mId },
+                { "dstRes", edge.dstRes },
+            });
+        }
+
+        // graphExport["serialExecutionOrder"]
+        for (const auto& node : renderGraph->toNodePtrList(results.serialExecutionOrder))
+        {
+            graphExport["serialExecutionOrder"].push_back({
+                { "id", node->mId },
+                { "name", node->name },
+            });
+        }
+
+        // graphExport["parallelizableNodes"]
+        for (const auto& [nodeId, list] : results.parallelizableNodes)
+        {
+            graphExport["parallelizableNodes"].push_back({
+                renderGraph->getPassById(nodeId)->name, list | std::views::transform([&](const Id_t id){ return renderGraph->getPassById(id)->name; }) | std::ranges::to<std::vector<std::string>>(),
+            });
+        }
+
+        // graphExport["generatedTasks"]
+        for (const auto& task : results.taskOrder)
+        {
+            graphExport["generatedTasks"].push_back({
+                { "pass", task.pass->name },
+                { "async", std::format("{}", task.asyncPass ? task.asyncPass->name : "null") },
+            });
+        }
+
+        // graphExport["resourceOptimizerResult"]["resources"]
+        for (const auto& [i, optRes] : std::views::enumerate(results.resourceOptimizer.generatedResources))
+        {
+            graphExport["resourceOptimizerResult"]["resources"].push_back({
+                { "id", optRes.id },
+                { "type", optRes.type },
+                { "usagePoints", json::array() },
+            });
+
+            for (const auto& usage : optRes.usagePoints)
+            {
+                graphExport["resourceOptimizerResult"]["resources"][i]["usagePoints"].push_back(usage);
+            }
+        }
+
+        std::ofstream file("graphExport.json");
+        file << std::setw(4) << graphExport << std::endl;
+        file.close();
+    }
+};
+
+// =======================================
+// Utility Macros
+// =======================================
+#define rg_CHECK_COMPILER_STEP_RESULT(compilerResult) \
+    if (!compilerResult.has_value()) return createErrorOutput(compilerResult)
+
+// =======================================
 // Render Graph Compiler
 // =======================================
 class RenderGraphCompiler
@@ -449,15 +577,11 @@ public:
 
     RGCompilerOutput compile() const
     {
-        RGCompilerOutput output {};
-
         // Preamble Phase
-
         const auto cullNodesResult = cullNodes();
         rg_CHECK_COMPILER_STEP_RESULT(cullNodesResult);
 
         // Task Scheduling Phase
-
         const auto serialExecutionOrderResult = getSerialExecutionOrder(cullNodesResult.value());
         rg_CHECK_COMPILER_STEP_RESULT(serialExecutionOrderResult);
 
@@ -467,12 +591,28 @@ public:
         const auto finalTaskOrderResult = getFinalTaskOrder(serialExecutionOrderResult.value(), parallelizableTasksResult.value());
         rg_CHECK_COMPILER_STEP_RESULT(finalTaskOrderResult);
 
-        // Resource Optimizing Phase
-
+         // Resource Optimizing Phase
         auto resourceOptimizerResult = optimizeResources(cullNodesResult.value());
         rg_CHECK_COMPILER_STEP_RESULT(resourceOptimizerResult);
 
-        RenderGraphResourceOptimizer::exportResult(resourceOptimizerResult.value(), toNodePtrList(serialExecutionOrderResult.value()));
+        // =======================================
+        // Export Visualization & Debug Data
+        // =======================================
+        RGCompilerOutput output = {
+            .hasFailed    = false,
+            .failReason   = RGCompilerError::None,
+            .phaseOutputs = RGCompilerPhaseOutputs {
+                .cullNodes              = cullNodesResult.value(),
+                .serialExecutionOrder   = serialExecutionOrderResult.value(),
+                .parallelizableNodes    = parallelizableTasksResult.value(),
+                .taskOrder              = finalTaskOrderResult.value(),
+                .resourceOptimizer      = resourceOptimizerResult.value(),
+            },
+            .options = mOptions,
+        };
+
+        RenderGraphExport::exportMermaid(mRenderGraph);
+        RenderGraphCompilerExport::exportCompilerOutput(output, mRenderGraph);
 
         return output;
     }
@@ -516,7 +656,7 @@ private:
     RGCompilerResult<std::vector<Id_t>> getSerialExecutionOrder(const std::vector<Id_t>& nodeIds) const noexcept
     {
         try {
-            const auto nodePtrs = toNodePtrList(nodeIds) | std::ranges::to<std::vector<Vertex*>>();
+            const auto nodePtrs = mRenderGraph->toNodePtrList(nodeIds) | std::ranges::to<std::vector<Vertex*>>();
             return TopologicalSort(nodePtrs).execute();
         } catch (const std::runtime_error&) {
             return std::unexpected(RGCompilerError::CyclicDependency);
@@ -564,8 +704,8 @@ private:
             }
         }
 
-        // mRenderGraph->dumpDOT("renderGraph");
-        // shadowGraph.dumpDOT("shadowGraph");
+        // RenderGraphExport::exportMermaid(mRenderGraph);
+        // RenderGraphExport::exportGraphvizDOT(&shadowGraph);
 
         // Shadow Graph nodes in Serial execution order.
         const auto shadowNodes = nodeIds
@@ -631,7 +771,7 @@ private:
     {
         std::vector<RGTask> tasks;
 
-        const auto nodes = toNodePtrList(serialExecutionOrder);
+        const auto nodes = mRenderGraph->toNodePtrList(serialExecutionOrder);
 
         // Return pure serialized tasks if parallelization is not allowed by options.
         if (!mOptions.allowParallelization)
@@ -737,14 +877,6 @@ private:
         output.hasFailed = true;
         output.failReason = result.error();
         return output;
-    }
-
-    /** Transform a list of Node IDs to a list of Node Pointers. (No exists check) */
-    std::vector<Pass*> toNodePtrList(const std::vector<Id_t>& nodeIds) const noexcept
-    {
-        return nodeIds
-            | std::views::transform([this](const int32_t id){ return mRenderGraph->getPassById(id); })
-            | std::ranges::to<std::vector<Pass*>>();
     }
 
     /** Transform a list of Node Pointers to a list of Node IDs. */

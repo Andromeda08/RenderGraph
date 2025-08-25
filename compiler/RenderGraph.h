@@ -114,6 +114,14 @@ public:
         return containsEdge(a, b) || containsEdge(b, a);
     }
 
+    /** Transform a list of Node IDs to a list of Node Pointers. (No exists check) */
+    std::vector<Pass*> toNodePtrList(const std::vector<Id_t>& nodeIds) const noexcept
+    {
+        return nodeIds
+            | std::views::transform([this](const int32_t id){ return getPassById(id); })
+            | std::ranges::to<std::vector<Pass*>>();
+    }
+
     // =======================================
     // Getters
     // =======================================
@@ -131,6 +139,8 @@ public:
 private:
     friend class RenderGraphCompiler;
     friend class RenderGraphResourceOptimizer;
+    friend class RenderGraphExport;
+    friend class RenderGraphCompilerExport;
 
     static RenderGraph createCopy(const RenderGraph& renderGraph)
     {
@@ -153,26 +163,6 @@ private:
         }
 
         return copyGraph;
-    }
-
-    void dumpDOT(const std::string& fileName) const
-    {
-        std::vector<std::string> output = {"digraph {"};
-        for (const auto& start : mVertices)
-        {
-            for (const auto& endVtx : start->mOutgoingEdges)
-            {
-                auto* end = dynamic_cast<Pass*>(endVtx);
-                output.emplace_back(std::format("\"{}\" -> \"{}\"", start->name, end->name));
-            }
-        }
-        output.emplace_back("}");
-
-        std::ofstream file(fileName);
-        for (const auto& s : output)
-        {
-            file << s << '\n';
-        }
     }
 
     std::vector<PassPtr> mVertices;
