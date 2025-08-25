@@ -1,12 +1,7 @@
 #pragma once
 
-#include <fstream>
-#include <ranges>
-#include <string>
-#include <vector>
-#include <nlohmann/json.hpp>
-#include "../RenderGraph.h"
-#include "../compiler/RGCompilerTypes.h"
+class RenderGraph;
+struct RGCompilerOutput;
 
 // =======================================
 // Compiler Output Exporter

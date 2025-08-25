@@ -1,7 +1,21 @@
 #include "RGCompilerExport.h"
 
+#include <chrono>
+#include <fstream>
+#include <ranges>
+#include <string>
+#include <vector>
+
+#include "../RenderGraph.h"
+#include "../compiler/RGCompilerTypes.h"
+
+#ifdef rg_JSON_EXPORT
+    #include <nlohmann/json.hpp>
+#endif
+
 void RenderGraphCompilerExport::exportJSONCompilerOutput(const RGCompilerOutput& output, const RenderGraph* renderGraph)
 {
+#ifdef rg_JSON_EXPORT
     if (!output.phaseOutputs.has_value())
     {
         return;
@@ -105,6 +119,9 @@ void RenderGraphCompilerExport::exportJSONCompilerOutput(const RGCompilerOutput&
     std::ofstream file("graphExport.json");
     file << std::setw(4) << graphExport << std::endl;
     file.close();
+#else
+    return;
+#endif
 }
 
 void RenderGraphCompilerExport::exportMermaidCompilerOutput(const RGCompilerOutput& output)
@@ -173,7 +190,8 @@ void RenderGraphCompilerExport::exportMermaidCompilerOutput(const RGCompilerOutp
         }
     }
 
-    std::ofstream file("renderGraphCompiled.mermaid");
+    auto sysTime = std::chrono::system_clock::now();
+    std::ofstream file(std::format("export/renderGraphCompiled_{:%Y-%m-%d_%H-%M}.mermaid", sysTime));
     for (const auto& s : out)
     {
         file << s << '\n';

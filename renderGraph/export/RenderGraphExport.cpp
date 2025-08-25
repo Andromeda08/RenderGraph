@@ -1,5 +1,6 @@
 #include "RenderGraphExport.h"
 
+#include <chrono>
 #include <format>
 #include <fstream>
 #include <ranges>
@@ -54,7 +55,8 @@ void RenderGraphExport::exportMermaid(const RenderGraph* renderGraph)
         }
     }
 
-    std::ofstream file("renderGraph.mermaid");
+    auto sysTime = std::chrono::system_clock::now();
+    std::ofstream file(std::format("export/renderGraph_{:%Y-%m-%d_%H-%M}.mermaid", sysTime));
     for (const auto& s : output)
     {
         file << s << '\n';

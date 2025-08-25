@@ -1,6 +1,9 @@
 #pragma once
 
 #include <expected>
+#include <map>
+#include <optional>
+#include <vector>
 
 // =======================================
 // Type Aliases & Forward Declarations

@@ -46,7 +46,7 @@ public:
         rg_CHECK_COMPILER_STEP_RESULT(finalTaskOrderResult);
 
          // Resource Optimizing Phase
-        auto resourceOptimizerResult = optimizeResources(finalTaskOrderResult.value());
+        const auto resourceOptimizerResult = optimizeResources(finalTaskOrderResult.value());
         rg_CHECK_COMPILER_STEP_RESULT(resourceOptimizerResult);
 
         // Create Templates

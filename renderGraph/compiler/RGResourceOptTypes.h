@@ -1,11 +1,16 @@
 #pragma once
 
 #include <cstdint>
+#include <format>
 #include <ranges>
 #include <set>
 #include <string>
 #include <vector>
 #include "../InputData.h"
+
+#ifdef rg_JSON_EXPORT
+    #include <nlohmann/json.hpp>
+#endif
 
 constexpr bool isOptimizableResource(const ResourceType resourceType)
 {
@@ -82,7 +87,9 @@ struct UsagePoint
         access     = resourceInfo.originResource->access;
     }
 };
+#ifdef rg_JSON_EXPORT
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(UsagePoint, point, userResId, usedAs, userNodeId, usedBy, access);
+#endif
 
 inline bool operator<(const UsagePoint& lhs, const UsagePoint& rhs)
 {

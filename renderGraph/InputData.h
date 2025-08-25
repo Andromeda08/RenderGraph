@@ -4,10 +4,13 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include <nlohmann/json.hpp>
 
 #include "Graph.h"
 #include "IdSequence.h"
+
+#ifdef rg_JSON_EXPORT
+    #include <nlohmann/json.hpp>
+#endif
 
 // =======================================
 // Constants
@@ -25,11 +28,13 @@ enum class AccessType
     Write,
     None,
 };
+#ifdef rg_JSON_EXPORT
 NLOHMANN_JSON_SERIALIZE_ENUM(AccessType, {
     {AccessType::Read,  "read" },
     {AccessType::Write, "write"},
     {AccessType::None,  "none" },
 })
+#endif
 
 enum class ResourceType
 {

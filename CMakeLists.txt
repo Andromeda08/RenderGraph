@@ -23,3 +23,4 @@ add_executable(graphCompilerPrototype main.cpp
 
 target_link_libraries(graphCompilerPrototype PRIVATE nlohmann_json::nlohmann_json)
 target_include_directories(graphCompilerPrototype PRIVATE external/json/include)
+# target_compile_definitions(graphCompilerPrototype PRIVATE rg_JSON_EXPORT)
