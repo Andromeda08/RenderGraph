@@ -1,9 +1,10 @@
 #pragma once
 
 #include <algorithm>
-#include <ranges>
-#include <queue>
+#include <expected>
 #include <map>
+#include <queue>
+#include <ranges>
 #include <set>
 #include <vector>
 
@@ -86,28 +87,30 @@ struct BFS
     }
 };
 
-class TopologicalSort
+struct TopologicalSort
 {
-public:
-    explicit TopologicalSort(const std::vector<Vertex*>& vertices)
-    : mVertices(vertices)
+    enum class Error
     {
-    }
+        GraphNotAcyclic,
+    };
 
-    [[nodiscard]] std::vector<int32_t> execute() const
+    /**
+     * @return List of Vertex IDs in topological order.
+     */
+    static std::expected<std::vector<int32_t>, Error> execute(const std::vector<Vertex*>& vertices) noexcept
     {
-        std::map<int32_t, int32_t> in_degrees;
-        for (const auto& vertex : mVertices)
+        std::map<int32_t, int32_t> inDegrees;
+        for (const auto& vertex : vertices)
         {
-            in_degrees.emplace(vertex->mId, vertex->mIncomingEdges.size());
+            inDegrees.emplace(vertex->mId, vertex->mIncomingEdges.size());
         }
 
         std::vector<Vertex*> T;
         std::queue<Vertex*>  Q;
 
-        for (const auto& vertex : mVertices)
+        for (const auto& vertex : vertices)
         {
-            if (in_degrees[vertex->mId] == 0)
+            if (inDegrees[vertex->mId] == 0)
             {
                 Q.push(vertex);
             }
@@ -121,22 +124,22 @@ public:
 
             for (const auto& w : v->mOutgoingEdges)
             {
-                auto w_id = w->mId;
+                auto wId = w->mId;
 
-                in_degrees[w_id]--;
-                if (in_degrees[w_id] == 0)
+                inDegrees[wId]--;
+                if (inDegrees[wId] == 0)
                 {
-                    auto i = std::ranges::find_if(mVertices, [w_id](const auto& it){ return it->mId == w_id; });
+                    auto i = std::ranges::find_if(vertices, [wId](const auto& it){ return it->mId == wId; });
                     Q.push(*i);
                 }
             }
         }
 
-        for (const auto& vertex : mVertices)
+        for (const auto& vertex : vertices)
         {
-            if (in_degrees[vertex->mId] != 0)
+            if (inDegrees[vertex->mId] != 0)
             {
-                throw std::runtime_error("Given graph was not acyclic.");
+                return std::unexpected(Error::GraphNotAcyclic);
             }
         }
 
@@ -144,7 +147,4 @@ public:
             | std::views::transform([](const Vertex* vtx){ return vtx->mId; })
             | std::ranges::to<std::vector<int32_t>>();
     }
-
-private:
-    const std::vector<Vertex*>& mVertices;
 };
