@@ -3,6 +3,7 @@
 #include <chrono>
 #include <format>
 #include <fstream>
+#include <filesystem>
 #include <ranges>
 #include <set>
 #include <string>
@@ -59,6 +60,11 @@ void RenderGraphExport::exportMermaid(const RenderGraph* renderGraph)
     }
 
     auto sysTime = std::chrono::system_clock::now();
+    if (!std::filesystem::exists("export"))
+    {
+        std::filesystem::create_directory("export");
+    }
+
     std::ofstream file(std::format("export/renderGraph_{:%Y-%m-%d_%H-%M}.mermaid", sysTime));
     for (const auto& s : output)
     {
@@ -79,7 +85,11 @@ void RenderGraphExport::exportGraphvizDOT(const RenderGraph* renderGraph)
     }
     output.emplace_back("}");
 
-    std::ofstream file("renderGraph.dot");
+    if (!std::filesystem::exists("export"))
+    {
+        std::filesystem::create_directory("export");
+    }
+    std::ofstream file("export/renderGraph.dot");
     for (const auto& s : output)
     {
         file << s << '\n';

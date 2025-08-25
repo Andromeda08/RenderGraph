@@ -1,6 +1,7 @@
 #include "RGCompilerExport.h"
 
 #include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <ranges>
 #include <string>
@@ -116,7 +117,11 @@ void RenderGraphCompilerExport::exportJSONCompilerOutput(const RGCompilerOutput&
         }
     }
 
-    std::ofstream file("graphExport.json");
+    if (!std::filesystem::exists("export"))
+    {
+        std::filesystem::create_directory("export");
+    }
+    std::ofstream file("export/graphExport.json");
     file << std::setw(4) << graphExport << std::endl;
     file.close();
 #else
@@ -191,6 +196,11 @@ void RenderGraphCompilerExport::exportMermaidCompilerOutput(const RGCompilerOutp
     }
 
     auto sysTime = std::chrono::system_clock::now();
+    if (!std::filesystem::exists("export"))
+    {
+        std::filesystem::create_directory("export");
+    }
+
     std::ofstream file(std::format("export/renderGraphCompiled_{:%Y-%m-%d_%H-%M}.mermaid", sysTime));
     for (const auto& s : out)
     {
