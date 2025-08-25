@@ -114,6 +114,26 @@ namespace Passes
         return pass;
     }
 
+    inline PassPtr computeExample()
+    {
+        using enum ResourceType;
+        using enum AccessType;
+        auto pass = std::make_unique<Pass>();
+
+        pass->mId = IdSequence::next();
+        pass->name = "AsyncCompute Pass";
+        pass->flags = {
+            .compute = true,
+            .async = true,
+        };
+        pass->dependencies = {
+            Resource { IdSequence::next(), "scene", External, None },
+            Resource { IdSequence::next(), "someImage", Image, Write },
+        };
+
+        return pass;
+    }
+
     inline PassPtr graphicsGBufferPass()
     {
         using enum ResourceType;
@@ -130,6 +150,7 @@ namespace Passes
             Resource { IdSequence::next(), "positionImage", Image, Write },
             Resource { IdSequence::next(), "normalImage", Image, Write },
             Resource { IdSequence::next(), "albedoImage", Image, Write },
+            Resource { IdSequence::next(), "motionVectors", Image, Write },
         };
 
         return pass;
@@ -171,6 +192,26 @@ namespace Passes
             Resource { IdSequence::next(), "imageA", Image, Read },
             Resource { IdSequence::next(), "imageB", Image, Read },
             Resource { IdSequence::next(), "combined", Image, Write },
+        };
+
+        return pass;
+    }
+
+    inline PassPtr graphicsAntiAliasingPass()
+    {
+        using enum ResourceType;
+        using enum AccessType;
+        auto pass = std::make_unique<Pass>();
+
+        pass->mId = IdSequence::next();
+        pass->name = "Anti-Aliasing Pass";
+        pass->flags = {
+            .raster = true,
+        };
+        pass->dependencies = {
+            Resource { IdSequence::next(), "motionVectors", Image, Read },
+            Resource { IdSequence::next(), "aaInput", Image, Read },
+            Resource { IdSequence::next(), "aaOutput", Image, Write },
         };
 
         return pass;

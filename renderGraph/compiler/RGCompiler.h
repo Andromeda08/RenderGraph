@@ -70,6 +70,7 @@ public:
         // Export Visualization & Debug Data
         RenderGraphExport::exportMermaid(mRenderGraph);
         RenderGraphCompilerExport::exportMermaidCompilerOutput(output);
+        RenderGraphCompilerExport::exportJSONCompilerOutput(output, mRenderGraph);
 
         return output;
     }

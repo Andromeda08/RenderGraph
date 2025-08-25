@@ -10,7 +10,7 @@ int main()
     RenderGraph* renderGraph;
 
     try {
-        renderGraph = createExampleGraph();
+        renderGraph = createExampleGraph2();
     } catch (const std::runtime_error& err)
     {
         std::cerr << err.what() << std::endl;

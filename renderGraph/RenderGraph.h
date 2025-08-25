@@ -214,3 +214,51 @@ inline RenderGraph* createExampleGraph()
 
     return graph;
 }
+
+inline RenderGraph* createExampleGraph2()
+{
+    auto* graph = new RenderGraph();
+
+    Pass* beginPass     = graph->addPass(Passes::sentinelBeginPass());
+    Pass* someCompute   = graph->addPass(Passes::computeExample());
+    Pass* gBufferPass   = graph->addPass(Passes::graphicsGBufferPass());
+    Pass* lightingPass  = graph->addPass(Passes::graphicsLightingPass());
+    Pass* aoPass        = graph->addPass(Passes::computeAmbientOcclusion());
+    Pass* compPass      = graph->addPass(Passes::utilCompositionPass());
+    Pass* aaPass        = graph->addPass(Passes::graphicsAntiAliasingPass());
+    Pass* compPass2     = graph->addPass(Passes::utilCompositionPass());
+    Pass* presentPass   = graph->addPass(Passes::sentinelPresentPass());
+
+    std::vector<bool> edgeInserts;
+
+    edgeInserts.append_range(std::vector {
+        graph->insertEdge(beginPass, "scene", gBufferPass, "scene"),
+
+        graph->insertEdge(beginPass, "scene", someCompute, "scene"),
+
+        graph->insertEdge(gBufferPass, "positionImage", lightingPass, "positionImage"),
+        graph->insertEdge(gBufferPass, "normalImage", lightingPass, "normalImage"),
+        graph->insertEdge(gBufferPass, "albedoImage", lightingPass, "albedoImage"),
+
+        graph->insertEdge(gBufferPass, "positionImage", aoPass, "positionImage"),
+        graph->insertEdge(gBufferPass, "normalImage", aoPass, "normalImage"),
+
+        graph->insertEdge(lightingPass, "lightingResult", compPass, "imageA"),
+        graph->insertEdge(aoPass, "ambientOcclusionImage", compPass, "imageB"),
+
+        graph->insertEdge(compPass, "combined", aaPass, "aaInput"),
+        graph->insertEdge(gBufferPass, "motionVectors", aaPass, "motionVectors"),
+
+        graph->insertEdge(aaPass, "aaOutput", compPass2, "imageA"),
+        graph->insertEdge(someCompute, "someImage", compPass2, "imageB"),
+
+        graph->insertEdge(compPass2, "combined", presentPass, "presentImage"),
+    });
+
+    if (!std::ranges::all_of(edgeInserts, [](const bool& val){ return val == true;}))
+    {
+        throw std::runtime_error("Some edge insertions failed");
+    }
+
+    return graph;
+}

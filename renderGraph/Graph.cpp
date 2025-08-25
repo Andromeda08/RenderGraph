@@ -71,7 +71,7 @@ std::expected<std::vector<int32_t>, TopologicalSort::Error>TopologicalSort::exec
     std::map<int32_t, int32_t> inDegrees;
     for (const auto& vertex : vertices)
     {
-        inDegrees.emplace(vertex->mId, vertex->mIncomingEdges.size());
+        inDegrees.emplace(vertex->mId, static_cast<int32_t>(vertex->mIncomingEdges.size()));
     }
 
     std::vector<Vertex*> T;
