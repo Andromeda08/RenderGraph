@@ -9,9 +9,7 @@
 #include "RenderGraph.h"
 #include "RenderGraphExport.h"
 
-// =======================================
-// Enum Types
-// =======================================
+using Node_t = Pass*;
 
 enum class RGCompilerError
 {
@@ -21,14 +19,8 @@ enum class RGCompilerError
     NoNodeByGivenId,
 };
 
-// =======================================
-// Using Defines
-// =======================================
-
 template <class T>
 using RGCompilerResult = std::expected<T, RGCompilerError>;
-
-using Node_t = Pass*;
 
 struct RGTask
 {
@@ -37,8 +29,16 @@ struct RGTask
 };
 
 // =======================================
-// Render Graph Resource Optimizer : Data
+// Utility Macros
 // =======================================
+#define rg_CHECK_COMPILER_STEP_RESULT(compilerResult) \
+    if (!compilerResult.has_value()) return createErrorOutput(compilerResult)
+
+// =======================================
+// Render Graph Resource Optimizer
+// =======================================
+#pragma region "Resource Optimization"
+
 constexpr bool isOptimizableResource(const ResourceType resourceType)
 {
     return resourceType == ResourceType::Image;
@@ -169,6 +169,7 @@ struct RGOptResource
     int32_t              id;
     std::set<UsagePoint> usagePoints;
     Resource             originalResource;
+    Id_t                 originalNode;
     ResourceType         type;
 
     Range getUsageRange() const
@@ -203,10 +204,6 @@ struct RGOptResource
         return true;
     }
 };
-
-// =======================================
-// Render Graph Resource Optimizer
-// =======================================
 
 struct RGResOptOutput
 {
@@ -244,6 +241,7 @@ public:
                 .id               = IdSequence::next(),
                 .usagePoints      = {},
                 .originalResource = *res.originResource,
+                .originalNode     = res.originNode->mId,
                 .type             = res.type
             };
 
@@ -295,54 +293,6 @@ public:
         };
 
         return output;
-    }
-
-    [[deprecated]] static void exportResult(RGResOptOutput& result, const std::vector<Pass*>& execOrder)
-    {
-        std::vector<std::string> csv;
-        std::stringstream sstr;
-        sstr << "Optimized Resources,\n"
-             << std::format("Reduction: {},", result.reduction)
-             << std::format("Non-optimizable: {},", result.nonOptimizables);
-        csv.push_back(sstr.str());
-        sstr.str(std::string());
-
-        sstr << ",";
-        for (int32_t i = 0; i < result.timelineRange.end; i++)
-        {
-            // sstr << std::format("Node #{},", i);
-            sstr << std::format("{},", execOrder[i]->name);
-        }
-        csv.push_back(sstr.str());
-        sstr.str(std::string());
-
-        for (int32_t i = 0; i < result.generatedResources.size(); i++)
-        {
-            auto& resource = result.generatedResources[i];
-            auto range = resource.getUsageRange();
-
-            sstr << std::format("Resource #{},", i);
-            for (int32_t j = 0; j < result.timelineRange.end; j++)
-            {
-                if (auto usagePoint = resource.getUsagePoint(j); usagePoint.has_value())
-                {
-                    auto point = usagePoint.value();
-                    sstr << ((range.start == range.end) ? std::format("[{}]", point.usedAs)
-                        : (j == range.start) ? std::format("[{}", point.usedAs)
-                        : (j == range.end) ? std::format("{}]", point.usedAs)
-                        : point.usedAs);
-                }
-                sstr << ",";
-            }
-            csv.push_back(sstr.str());
-            sstr.str(std::string());
-        }
-
-        std::fstream fs("resourceOptimizerResult.csv");
-        fs.open("resourceOptimizerResult.csv", std::ios_base::out);
-        std::ostream_iterator<std::string> os_it(fs, "\n");
-        std::ranges::copy(csv, os_it);
-        fs.close();
     }
 
 private:
@@ -427,9 +377,10 @@ private:
     const std::vector<RGTask>& mTasks;
 };
 
+#pragma endregion
 
 // =======================================
-// Data Types
+// Compiler Data Types
 // =======================================
 
 struct RGCompilerOptions
@@ -437,10 +388,21 @@ struct RGCompilerOptions
     bool allowParallelization = false;
 };
 
-struct RGPassTemplate {};
-struct RGResourceTemplate {};
-struct RGBarrierTemplate {};
-struct RGSyncPointTemplate {};
+struct RGResourceLink
+{
+    Id_t        srcPass;
+    Id_t        dstPass;
+    Id_t        srcResource;
+    Id_t        dstResource;
+    AccessType  access;
+};
+
+struct RGResourceTemplate
+{
+    Id_t                        id;
+    ResourceType                type;
+    std::vector<RGResourceLink> links;
+};
 
 struct RGCompilerPhaseOutputs
 {
@@ -453,6 +415,7 @@ struct RGCompilerPhaseOutputs
 
 struct RGCompilerOutput
 {
+    std::vector<RGResourceTemplate>       resourceTemplates;
     bool                                  hasFailed     = false;
     RGCompilerError                       failReason    = RGCompilerError::None;
     std::optional<RGCompilerPhaseOutputs> phaseOutputs  = std::nullopt;
@@ -465,7 +428,7 @@ struct RGCompilerOutput
 class RenderGraphCompilerExport
 {
 public:
-    static void exportCompilerOutput(const RGCompilerOutput& output, const RenderGraph* renderGraph)
+    static void exportJSONCompilerOutput(const RGCompilerOutput& output, const RenderGraph* renderGraph)
     {
         if (!output.phaseOutputs.has_value())
         {
@@ -572,7 +535,7 @@ public:
         file.close();
     }
 
-    static void exportMermaidCompilerOutput(const RGCompilerOutput& output, const RenderGraph* renderGraph)
+    static void exportMermaidCompilerOutput(const RGCompilerOutput& output)
     {
         if (!output.phaseOutputs.has_value())
         {
@@ -647,12 +610,6 @@ public:
 };
 
 // =======================================
-// Utility Macros
-// =======================================
-#define rg_CHECK_COMPILER_STEP_RESULT(compilerResult) \
-    if (!compilerResult.has_value()) return createErrorOutput(compilerResult)
-
-// =======================================
 // Render Graph Compiler
 // =======================================
 class RenderGraphCompiler
@@ -684,11 +641,15 @@ public:
         auto resourceOptimizerResult = optimizeResources(finalTaskOrderResult.value());
         rg_CHECK_COMPILER_STEP_RESULT(resourceOptimizerResult);
 
+        // Create Templates
+        const auto resourceTemplates = getResourceTemplates(resourceOptimizerResult.value());
+
         // Create result
         RGCompilerOutput output = {
-            .hasFailed    = false,
-            .failReason   = RGCompilerError::None,
-            .phaseOutputs = RGCompilerPhaseOutputs {
+            .resourceTemplates  = resourceTemplates,
+            .hasFailed          = false,
+            .failReason         = RGCompilerError::None,
+            .phaseOutputs       = RGCompilerPhaseOutputs {
                 .cullNodes              = cullNodesResult.value(),
                 .serialExecutionOrder   = serialExecutionOrderResult.value(),
                 .parallelizableNodes    = parallelizableTasksResult.value(),
@@ -700,8 +661,7 @@ public:
 
         // Export Visualization & Debug Data
         RenderGraphExport::exportMermaid(mRenderGraph);
-        RenderGraphCompilerExport::exportCompilerOutput(output, mRenderGraph);
-        RenderGraphCompilerExport::exportMermaidCompilerOutput(output, mRenderGraph);
+        RenderGraphCompilerExport::exportMermaidCompilerOutput(output);
 
         return output;
     }
@@ -744,12 +704,15 @@ private:
      */
     RGCompilerResult<std::vector<Id_t>> getSerialExecutionOrder(const std::vector<Id_t>& nodeIds) const noexcept
     {
-        try {
-            const auto nodePtrs = mRenderGraph->toNodePtrList(nodeIds) | std::ranges::to<std::vector<Vertex*>>();
-            return TopologicalSort(nodePtrs).execute();
-        } catch (const std::runtime_error&) {
+        const auto nodePtrs = mRenderGraph->toNodePtrList(nodeIds) | std::ranges::to<std::vector<Vertex*>>();
+
+        const auto tsortResult = TopologicalSort::execute(nodePtrs);
+        if (!tsortResult.has_value())
+        {
             return std::unexpected(RGCompilerError::CyclicDependency);
         }
+
+        return tsortResult.value();
     }
 
     /** Render Graph Compiler : Step 2.2
@@ -919,13 +882,52 @@ private:
         return RenderGraphResourceOptimizer(mRenderGraph, tasks).run();
     }
 
-    /** Render Graph Compiler : Step 3.2
+    // =======================================
+    // Render Graph Compiler Phase : Templates
+    // =======================================
+
+    /** Render Graph Compiler : Step 4.1
+     * Create pass templates.
+     * @return List of templates for passes.
+     */
+    std::vector<RGPassTemplate> getPassTemplates() const
+    {
+        return mRenderGraph->mVertices
+            | std::views::transform([](const auto& pass){ return RGPassTemplate{ pass.get() }; })
+            | std::ranges::to<std::vector<RGPassTemplate>>();
+    }
+
+    /** Render Graph Compiler : Step 4.2
      * Create resource templates from optimizer result.
      * @return List of templates for the optimized resources.
      */
-    RGCompilerResult<std::vector<RGResourceTemplate>> getResourceTemplates(const RGResOptOutput& optimizerOutput)
+    std::vector<RGResourceTemplate> getResourceTemplates(const RGResOptOutput& optimizerOutput) const
     {
         std::vector<RGResourceTemplate> templates;
+
+        for (const auto& genRes : optimizerOutput.generatedResources)
+        {
+            RGResourceTemplate resource = {
+                .id     = genRes.id,
+                .type   = genRes.type,
+                .links  = {},
+            };
+
+            const auto* originNode = mRenderGraph->getPassById(genRes.originalNode);
+            for (const auto& consumer : genRes.usagePoints)
+            {
+                RGResourceLink link = {
+                    .srcPass     = originNode->mId,
+                    .dstPass     = consumer.userNodeId,
+                    .srcResource = genRes.originalResource.id,
+                    .dstResource = consumer.userResId,
+                    .access      = consumer.access,
+                };
+                resource.links.push_back(link);
+            }
+
+            templates.push_back(resource);
+        }
 
         return templates;
     }
