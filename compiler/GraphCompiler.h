@@ -595,9 +595,7 @@ public:
         auto resourceOptimizerResult = optimizeResources(cullNodesResult.value());
         rg_CHECK_COMPILER_STEP_RESULT(resourceOptimizerResult);
 
-        // =======================================
-        // Export Visualization & Debug Data
-        // =======================================
+        // Create result
         RGCompilerOutput output = {
             .hasFailed    = false,
             .failReason   = RGCompilerError::None,
@@ -611,6 +609,7 @@ public:
             .options = mOptions,
         };
 
+        // Export Visualization & Debug Data
         RenderGraphExport::exportMermaid(mRenderGraph);
         RenderGraphCompilerExport::exportCompilerOutput(output, mRenderGraph);
 
@@ -705,7 +704,7 @@ private:
         }
 
         // RenderGraphExport::exportMermaid(mRenderGraph);
-        // RenderGraphExport::exportGraphvizDOT(&shadowGraph);
+        // RenderGraphExport::exportMermaid(&shadowGraph);
 
         // Shadow Graph nodes in Serial execution order.
         const auto shadowNodes = nodeIds
@@ -739,22 +738,6 @@ private:
                 canRunInParallel.erase(nodeId);
             }
         }
-
-        /* Debug print for "canRunInParallel"
-        for (const auto& [k, v] : canRunInParallel)
-        {
-            std::cout << mRenderGraph->getPassById(k)->name << " > ";
-            for (const auto& [i, otherId] : std::views::enumerate(v))
-            {
-                std::cout << mRenderGraph->getPassById(otherId)->name;
-                if (i + 1 < v.size())
-                {
-                    std::cout << ", ";
-                }
-            }
-            std::cout << std::endl;
-        }
-        */
 
         return canRunInParallel;
     }
@@ -829,18 +812,6 @@ private:
 
             parallelTaskCount++;
         }
-
-        /** Debug print for Tasks
-        for (const auto& [i, task] : std::views::enumerate(tasks))
-        {
-            std::cout << std::format("Task #{} > {}", i, task.pass->name);
-            if (task.asyncPass)
-            {
-                std::cout << std::format(", {} [Parallel]", task.asyncPass->name);
-            }
-            std::cout << std::endl;
-        }
-        */
 
         return tasks;
     }
