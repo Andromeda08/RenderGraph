@@ -30,6 +30,12 @@ using RGCompilerResult = std::expected<T, RGCompilerError>;
 
 using Node_t = Pass*;
 
+struct RGTask
+{
+    Pass* pass       = nullptr;
+    Pass* asyncPass  = nullptr;
+};
+
 // =======================================
 // Render Graph Resource Optimizer : Data
 // =======================================
@@ -92,7 +98,9 @@ struct UsagePoint
     {
         point      = consumerInfo.nodeIdx;
         userResId  = consumerInfo.resourceId;
+        usedAs     = consumerInfo.resourceName;
         userNodeId = consumerInfo.nodeId;
+        usedBy     = consumerInfo.nodeName;
         access     = consumerInfo.access;
     }
 
@@ -122,6 +130,8 @@ struct Range
 {
     int32_t start;
     int32_t end;
+
+    Range() = default;
 
     explicit Range(const std::set<UsagePoint>& points)
     {
@@ -216,8 +226,9 @@ struct RGResOptOutput
 class RenderGraphResourceOptimizer
 {
 public:
-    explicit RenderGraphResourceOptimizer(const RenderGraph* renderGraph)
+    explicit RenderGraphResourceOptimizer(const RenderGraph* renderGraph, const std::vector<RGTask>& tasks)
     : mRenderGraph(renderGraph)
+    , mTasks(tasks)
     {
     }
 
@@ -340,11 +351,15 @@ private:
         std::vector<ResourceInfo> result;
 
         // Get all output resources
-        for (const auto& [i, node] : std::views::enumerate(mRenderGraph->mVertices))
+        for (const auto& node : mRenderGraph->mVertices)
         {
             for (auto& resource : node->dependencies | std::views::filter([](const Resource& res){ return res.access == AccessType::Write; }))
             {
-                result.push_back(ResourceInfo::createFrom(node.get(), resource, static_cast<int32_t>(i)));
+                const auto it = std::ranges::find_if(mTasks, [&](const RGTask& task){
+                    return task.pass->mId == node->mId
+                        || (task.asyncPass && task.asyncPass->mId == node->mId);
+                });
+                result.push_back(ResourceInfo::createFrom(node.get(), resource, std::distance(std::begin(mTasks), it)));
             }
         }
 
@@ -364,12 +379,17 @@ private:
                 });
                 const int32_t consumerResourceId = consumerResource->id;
 
-                const auto it = std::ranges::find_if(mRenderGraph->mVertices, [&](const auto& pass){
-                    return pass->mId == consumerNodeId;
+                // const auto it = std::ranges::find_if(mRenderGraph->mVertices, [&](const auto& pass){
+                //     return pass->mId == consumerNodeId;
+                // });
+
+                const auto it = std::ranges::find_if(mTasks, [&](const RGTask& task){
+                    return task.pass->mId == consumerNodeId
+                        || (task.asyncPass && task.asyncPass->mId == consumerNodeId);
                 });
 
-                const auto consumerNodeIdx = static_cast<int32_t>(std::distance(std::begin(mRenderGraph->mVertices), it));
-                Pass* consumerNode = mRenderGraph->mVertices[consumerNodeIdx].get();
+                const auto consumerNodeIdx = static_cast<int32_t>(std::distance(std::begin(mTasks), it));
+                Pass* consumerNode = it->pass->mId == consumerNodeId ? it->pass : it->asyncPass;
 
                 ConsumerInfo consumerInfo = {
                     .nodeId       = consumerNodeId,
@@ -403,8 +423,10 @@ private:
         return usagePoints;
     }
 
-    const RenderGraph* mRenderGraph;
+    const RenderGraph*         mRenderGraph;
+    const std::vector<RGTask>& mTasks;
 };
+
 
 // =======================================
 // Data Types
@@ -413,12 +435,6 @@ private:
 struct RGCompilerOptions
 {
     bool allowParallelization = false;
-};
-
-struct RGTask
-{
-    Pass* pass       = nullptr;
-    Pass* asyncPass  = nullptr;
 };
 
 struct RGPassTemplate {};
@@ -555,6 +571,79 @@ public:
         file << std::setw(4) << graphExport << std::endl;
         file.close();
     }
+
+    static void exportMermaidCompilerOutput(const RGCompilerOutput& output, const RenderGraph* renderGraph)
+    {
+        if (!output.phaseOutputs.has_value())
+        {
+            return;
+        }
+
+        std::vector<std::string> out = {
+            "---",
+            "displayMode: compact",
+            "---",
+            "gantt",
+            "\tdateFormat X",
+            "\taxisFormat %s",
+            "\tsection Passes",
+        };
+
+        for (const auto& [i, task] : std::views::enumerate(output.phaseOutputs->taskOrder))
+        {
+            out.push_back(std::format("\t{} : {}, {}", task.pass->name, i, i + 1));
+        }
+
+        out.emplace_back("\tsection Async");
+        for (const auto& [i, task] : std::views::enumerate(output.phaseOutputs->taskOrder))
+        {
+            if (task.asyncPass)
+            {
+                out.push_back(std::format("\t{} : {}, {}", task.asyncPass->name, i, i + 1));
+            }
+        }
+
+        for (const auto& [i, resource] : std::views::enumerate(output.phaseOutputs->resourceOptimizer.generatedResources))
+        {
+            out.emplace_back(std::format("section Resource #{}", i));
+            auto usagePoints = std::ranges::to<std::vector<UsagePoint>>(resource.usagePoints);
+
+            for (int32_t j = 1; j < usagePoints.size(); j++)
+            {
+                if (usagePoints[j - 1].access == AccessType::Write)
+                {
+                    usagePoints[j].usedAs = usagePoints[j - 1].usedAs;
+                }
+            }
+
+            std::map<std::string, Range> usageRanges;
+            for (const auto& usagePoint : usagePoints)
+            {
+                if (!usageRanges.contains(usagePoint.usedAs))
+                {
+                    Range range = {};
+                    range.start = usagePoint.point;
+                    range.end   = usagePoint.point;
+                    usageRanges[usagePoint.usedAs] = range;
+                }
+                else
+                {
+                    usageRanges[usagePoint.usedAs].end = usagePoint.point;
+                }
+            }
+
+            for (const auto& [usedAs, range] : usageRanges)
+            {
+                out.emplace_back(std::format("{} : {}, {}", usedAs, range.start, (range.start == range.end) ? range.start + 1 : range.end));
+            }
+        }
+
+        std::ofstream file("compiler.mermaid");
+        for (const auto& s : out)
+        {
+            file << s << '\n';
+        }
+    }
 };
 
 // =======================================
@@ -592,7 +681,7 @@ public:
         rg_CHECK_COMPILER_STEP_RESULT(finalTaskOrderResult);
 
          // Resource Optimizing Phase
-        auto resourceOptimizerResult = optimizeResources(cullNodesResult.value());
+        auto resourceOptimizerResult = optimizeResources(finalTaskOrderResult.value());
         rg_CHECK_COMPILER_STEP_RESULT(resourceOptimizerResult);
 
         // Create result
@@ -612,6 +701,7 @@ public:
         // Export Visualization & Debug Data
         RenderGraphExport::exportMermaid(mRenderGraph);
         RenderGraphCompilerExport::exportCompilerOutput(output, mRenderGraph);
+        RenderGraphCompilerExport::exportMermaidCompilerOutput(output, mRenderGraph);
 
         return output;
     }
@@ -824,9 +914,9 @@ private:
      * Run the resource optimization algorithm.
      * @return Optimizer output.
      */
-    RGCompilerResult<RGResOptOutput> optimizeResources(const std::vector<Id_t>& nodeIds) const noexcept
+    RGCompilerResult<RGResOptOutput> optimizeResources(const std::vector<RGTask>& tasks) const noexcept
     {
-        return RenderGraphResourceOptimizer(mRenderGraph).run();
+        return RenderGraphResourceOptimizer(mRenderGraph, tasks).run();
     }
 
     /** Render Graph Compiler : Step 3.2
