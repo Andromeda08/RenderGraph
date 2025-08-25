@@ -25,9 +25,12 @@ void RenderGraphExport::exportMermaid(const RenderGraph* renderGraph)
         {
             if (node->mId == edge.src->mId)
             {
-                const auto res = std::ranges::find_if(node->dependencies, [&](const Resource& resource){ return resource.name == edge.srcRes; });
+                const auto res = std::ranges::find_if(node->dependencies, [&](const Resource& resource){ return resource.name == edge.srcResName; });
                 const auto type = res->type;
-                output.emplace_back(std::format("{}({}):::{}", edge.srcRes, edge.srcRes, type == ResourceType::Image ? "resImage" : "resOther"));
+                output.emplace_back(std::format("{}({}):::{}",
+                    std::format("{}{}", edge.srcRes, edge.srcResName),
+                    edge.srcResName,
+                    type == ResourceType::Image ? "resImage" : "resOther"));
             }
         }
     }
@@ -39,13 +42,13 @@ void RenderGraphExport::exportMermaid(const RenderGraph* renderGraph)
         {
             if (start->mId == edge.src->mId)
             {
-                const auto edge1 = std::format("{} --> {}", start->mId, edge.srcRes);
+                const auto edge1 = std::format("{} --> {}", start->mId, std::format("{}{}", edge.srcRes, edge.srcResName));
                 if (const auto it = std::ranges::find_if(output, [&edge1](const std::string& str){ return str == edge1; });
                     it == std::end(output))
                 {
                     output.push_back(edge1);
                 }
-                const auto edge2 = std::format("{} --> {}", edge.srcRes, edge.dst->mId);
+                const auto edge2 = std::format("{} --> {}", std::format("{}{}", edge.srcRes, edge.srcResName), edge.dst->mId);
                 if (const auto it = std::ranges::find_if(output, [&edge2](const std::string& str){ return str == edge2; });
                     it == std::end(output))
                 {

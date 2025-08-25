@@ -109,18 +109,14 @@ private:
             {
                 if (   resourceInfo.originNodeId         != edge.src->mId
                     || resourceInfo.originNodeId         == edge.dst->mId
-                    || resourceInfo.originResource->name != edge.srcRes     // TODO: Prefer ID
+                    || resourceInfo.originResource->id   != edge.srcRes
                 ) continue;
 
                 int32_t consumerNodeId     = edge.dst->mId;
                 const auto consumerResource = std::ranges::find_if(edge.dst->dependencies, [&](const Resource& res){
-                    return res.name == edge.dstRes;
+                    return res.id == edge.dstRes;
                 });
                 const int32_t consumerResourceId = consumerResource->id;
-
-                // const auto it = std::ranges::find_if(mRenderGraph->mVertices, [&](const auto& pass){
-                //     return pass->mId == consumerNodeId;
-                // });
 
                 const auto it = std::ranges::find_if(mTasks, [&](const RGTask& task){
                     return task.pass->mId == consumerNodeId
@@ -135,7 +131,7 @@ private:
                     .nodeIdx      = consumerNodeIdx,
                     .nodeName     = consumerNode->name,
                     .resourceId   = consumerResourceId,
-                    .resourceName = consumerResource->name,
+                    .resourceName = edge.dstResName,
                     .access       = consumerResource->access,
                     .node         = consumerNode,
                 };

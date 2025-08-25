@@ -24,9 +24,11 @@ struct Edge
 {
     Id_t        id;
     Pass*       src;
-    std::string srcRes;
+    Id_t        srcRes;
+    std::string srcResName;
     Pass*       dst;
-    std::string dstRes;
+    Id_t        dstRes;
+    std::string dstResName;
 };
 
 class RenderGraph
@@ -48,14 +50,14 @@ public:
     {
         if (src->mId == dst->mId) return false;
 
-        if (const auto findSrcRes = std::ranges::find_if(src->dependencies, [&](const Resource& res){ return res.name == srcRes; });
-            findSrcRes == std::end(src->dependencies))
+        const auto findSrcRes = std::ranges::find_if(src->dependencies, [&](const Resource& res){ return res.name == srcRes; });
+        if (findSrcRes == std::end(src->dependencies))
         {
             return false;
         }
 
-        if (const auto findDstRes = std::ranges::find_if(dst->dependencies, [&](const Resource& res){ return res.name == dstRes; });
-            findDstRes == std::end(dst->dependencies))
+        const auto findDstRes = std::ranges::find_if(dst->dependencies, [&](const Resource& res){ return res.name == dstRes; });
+        if (findDstRes == std::end(dst->dependencies))
         {
             return false;
         }
@@ -63,7 +65,7 @@ public:
         src->mOutgoingEdges.push_back(dst);
         dst->mIncomingEdges.push_back(src);
 
-        mEdges.emplace_back(IdSequence::next(), src, srcRes, dst, dstRes);
+        mEdges.emplace_back(IdSequence::next(), src, findSrcRes->id, findSrcRes->name, dst, findDstRes->id, findDstRes->name);
 
         return true;
     }
@@ -75,9 +77,17 @@ public:
     {
         if (src->mId == dst->mId) return false;
 
+        const auto srcResId = std::ranges::find_if(src->dependencies, [&srcRes](const Resource& res) {
+            return res.name == srcRes;
+        })->id;
+
+        const auto dstResId = std::ranges::find_if(src->dependencies, [&dstRes](const Resource& res) {
+            return res.name == dstRes;
+        })->id;
+
         const auto edge = std::ranges::find_if(mEdges, [&](const Edge& e) {
-            return e.src    == src    && e.dst    == dst
-                && e.srcRes == srcRes && e.dstRes == dstRes;
+            return e.src    == src      && e.dst    == dst
+                && e.srcRes == srcResId && e.dstRes == dstResId;
         });
         if (edge == std::end(mEdges)) return false;
 
@@ -100,7 +110,7 @@ public:
      */
     bool deleteEdge(const Edge& edge)
     {
-        return deleteEdge(edge.src, edge.srcRes, edge.dst, edge.dstRes);
+        return deleteEdge(edge.src, edge.srcResName, edge.dst, edge.dstResName);
     }
 
     bool containsEdge(const Pass* src, const Pass* dst) noexcept
@@ -113,8 +123,8 @@ public:
     bool containsEdge(const Pass* src, const std::string& srcRes, const Pass* dst, const std::string& dstRes) noexcept
     {
         return std::ranges::find_if(mEdges, [src, dst, &srcRes, &dstRes](const Edge& edge) {
-            return edge.src    == src    && edge.dst    == dst
-                && edge.srcRes == srcRes && edge.dstRes == dstRes;
+            return edge.src        == src    && edge.dst        == dst
+                && edge.srcResName == srcRes && edge.dstResName == dstRes;
         }) != std::end(mEdges);
     }
 
@@ -168,7 +178,7 @@ private:
         {
             auto* newSrc = copyGraph.getPassById(edge.src->mId);
             auto* newDst = copyGraph.getPassById(edge.dst->mId);
-            copyGraph.insertEdge(newSrc, edge.srcRes, newDst, edge.dstRes);
+            copyGraph.insertEdge(newSrc, edge.srcResName, newDst, edge.dstResName);
         }
 
         return copyGraph;
