@@ -1,7 +1,6 @@
 #pragma once
 
-#include <atomic>
-#include <memory>
+#include <cstdint>
 
 class IdSequence
 {
@@ -15,11 +14,6 @@ public:
         return sInstance;
     }
 
-    int32_t nextId()
-    {
-        return mLastId.fetch_add(1);
-    }
-
     static int32_t next()
     {
         return get().nextId();
@@ -28,5 +22,10 @@ public:
 private:
     IdSequence() = default;
 
-    std::atomic_int32_t mLastId = 0;
+    int32_t nextId()
+    {
+        return mLastId++;
+    }
+
+    int32_t mLastId = 0;
 };

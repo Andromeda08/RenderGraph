@@ -7,7 +7,7 @@ add_subdirectory(external/json)
 
 add_executable(graphCompilerPrototype main.cpp
     compiler/InputData.h
-    compiler/Utils.h
+    compiler/IdSequence.h
     compiler/Graph.h
     compiler/RenderGraph.h
     compiler/GraphCompiler.h

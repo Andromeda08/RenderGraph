@@ -7,7 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include "Graph.h"
-#include "Utils.h"
+#include "IdSequence.h"
 
 // =======================================
 // Constants
