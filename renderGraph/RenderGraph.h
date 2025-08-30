@@ -1,156 +1,55 @@
 #pragma once
 
-#include <algorithm>
-#include <fstream>
 #include <memory>
-#include <ranges>
 #include <string>
 #include <vector>
 
-#include "InputData.h"
-
-using Id_t = int32_t;
+#include "RenderGraphCore.h"
 
 // =======================================
-// Render Graph : Data Types
+// Render Graph
 // =======================================
-struct RGTask
-{
-    Pass* pass       = nullptr;
-    Pass* asyncPass  = nullptr;
-};
-
-struct Edge
-{
-    Id_t        id;
-    Pass*       src;
-    Id_t        srcRes;
-    std::string srcResName;
-    Pass*       dst;
-    Id_t        dstRes;
-    std::string dstResName;
-};
-
 class RenderGraph
 {
 public:
-    /** Add a Pass to the RenderGraph */
-    Pass* addPass(std::unique_ptr<Pass>&& vtx)
-    {
-        mVertices.push_back(std::move(vtx));
-        return mVertices.back().get();
-    }
+    /** Add a Pass to the RenderGraph. */
+    Pass* addPass(std::unique_ptr<Pass>&& vtx);
 
+    /** Delete a specific Pass by id. */
     bool deletePass(Id_t passId);
 
     /** Insert an edge between pass resources.
      * @return Success value
      */
-    bool insertEdge(Pass* src, const std::string& srcRes, Pass* dst, const std::string& dstRes)
-    {
-        if (src->mId == dst->mId) return false;
-
-        const auto findSrcRes = std::ranges::find_if(src->dependencies, [&](const Resource& res){ return res.name == srcRes; });
-        if (findSrcRes == std::end(src->dependencies))
-        {
-            return false;
-        }
-
-        const auto findDstRes = std::ranges::find_if(dst->dependencies, [&](const Resource& res){ return res.name == dstRes; });
-        if (findDstRes == std::end(dst->dependencies))
-        {
-            return false;
-        }
-
-        src->mOutgoingEdges.push_back(dst);
-        dst->mIncomingEdges.push_back(src);
-
-        mEdges.emplace_back(IdSequence::next(), src, findSrcRes->id, findSrcRes->name, dst, findDstRes->id, findDstRes->name);
-
-        return true;
-    }
+    bool insertEdge(Pass* src, const std::string& srcRes, Pass* dst, const std::string& dstRes);
 
     /** Delete an edge between pass resources.
      * @return Success value
      */
-    bool deleteEdge(Pass* src, const std::string& srcRes, Pass* dst, const std::string& dstRes)
-    {
-        if (src->mId == dst->mId) return false;
-
-        const auto srcResId = std::ranges::find_if(src->dependencies, [&srcRes](const Resource& res) {
-            return res.name == srcRes;
-        })->id;
-
-        const auto dstResId = std::ranges::find_if(src->dependencies, [&dstRes](const Resource& res) {
-            return res.name == dstRes;
-        })->id;
-
-        const auto edge = std::ranges::find_if(mEdges, [&](const Edge& e) {
-            return e.src    == src      && e.dst    == dst
-                && e.srcRes == srcResId && e.dstRes == dstResId;
-        });
-        if (edge == std::end(mEdges)) return false;
-
-        const auto b_find = std::ranges::find_if(src->mOutgoingEdges, [&](auto& v){ return v->mId == dst->mId; });
-        if (b_find == std::end(src->mOutgoingEdges)) return false;
-
-        const auto a_find = std::ranges::find_if(dst->mIncomingEdges, [&](auto& v){ return v->mId == src->mId; });
-        if (a_find == std::end(dst->mIncomingEdges)) return false;
-
-        mEdges.erase(edge);
-
-        src->mOutgoingEdges.erase(b_find);
-        dst->mIncomingEdges.erase(a_find);
-
-        return true;
-    }
+    bool deleteEdge(Pass* src, const std::string& srcRes, Pass* dst, const std::string& dstRes);
 
     /** Delete an edge between pass resources.
      * @return Success value
      */
-    bool deleteEdge(const Edge& edge)
-    {
-        return deleteEdge(edge.src, edge.srcResName, edge.dst, edge.dstResName);
-    }
+    bool deleteEdge(const Edge& edge);
 
-    bool containsEdge(const Pass* src, const Pass* dst) noexcept
-    {
-        return std::ranges::find_if(mEdges, [src, dst](const Edge& edge) {
-            return edge.src == src && edge.dst == dst;
-        }) != std::end(mEdges);
-    }
+    /** Check whether a specific directed edge exists.
+     * @return Success value
+     */
+    bool containsEdge(const Pass* src, const Pass* dst) noexcept;
 
-    bool containsEdge(const Pass* src, const std::string& srcRes, const Pass* dst, const std::string& dstRes) noexcept
-    {
-        return std::ranges::find_if(mEdges, [src, dst, &srcRes, &dstRes](const Edge& edge) {
-            return edge.src        == src    && edge.dst        == dst
-                && edge.srcResName == srcRes && edge.dstResName == dstRes;
-        }) != std::end(mEdges);
-    }
-
-    bool containsAnyEdge(const Pass* a, const Pass* b) noexcept
-    {
-        return containsEdge(a, b) || containsEdge(b, a);
-    }
+    /** Check whether an edge exists between the two vertices in any direction.
+     * @return Success value
+     */
+    bool containsAnyEdge(const Pass* a, const Pass* b) noexcept;
 
     /** Transform a list of Node IDs to a list of Node Pointers. (No exists check) */
-    std::vector<Pass*> toNodePtrList(const std::vector<Id_t>& nodeIds) const noexcept
-    {
-        return nodeIds
-            | std::views::transform([this](const int32_t id){ return getPassById(id); })
-            | std::ranges::to<std::vector<Pass*>>();
-    }
+    std::vector<Pass*> toNodePtrList(const std::vector<Id_t>& nodeIds) const noexcept;
 
     // =======================================
     // Getters
     // =======================================
-    Pass* getPassById(const Id_t id) const noexcept
-    {
-        const auto pass = std::ranges::find_if(mVertices, [&id](const auto& p){ return id == p->mId; });
-        return pass == std::end(mVertices)
-             ? nullptr
-             : pass->get();
-    }
+    Pass* getPassById(Id_t id) const noexcept;
 
     const std::vector<PassPtr>& getVertices() const { return mVertices; }
     const std::vector<Edge>&    getEdges()    const { return mEdges;    }
@@ -161,114 +60,16 @@ private:
     friend class RenderGraphExport;
     friend class RenderGraphCompilerExport;
 
-    static RenderGraph createCopy(const RenderGraph& renderGraph)
-    {
-        RenderGraph copyGraph;
-
-        for (const auto& node : renderGraph.mVertices)
-        {
-            auto* pass = copyGraph.addPass(std::make_unique<Pass>());
-            pass->dependencies = node->dependencies;
-            pass->name = node->name;
-            pass->mId = node->mId;
-            pass->flags = node->flags;
-        }
-
-        for (const auto& edge : renderGraph.mEdges)
-        {
-            auto* newSrc = copyGraph.getPassById(edge.src->mId);
-            auto* newDst = copyGraph.getPassById(edge.dst->mId);
-            copyGraph.insertEdge(newSrc, edge.srcResName, newDst, edge.dstResName);
-        }
-
-        return copyGraph;
-    }
+    /**
+     * Create a 1-1 copy of the specified RenderGraph
+     * (Warning: IDs are also copied, this should be used by only the Compiler!)
+     */
+    static RenderGraph createCopy(const RenderGraph& renderGraph);
 
     std::vector<PassPtr> mVertices;
     std::vector<Edge>    mEdges;
 };
 
-inline RenderGraph* createExampleGraph()
-{
-    auto* graph = new RenderGraph();
+std::unique_ptr<RenderGraph> createExampleGraph();
 
-    Pass* beginPass     = graph->addPass(Passes::sentinelBeginPass());
-    Pass* gBufferPass   = graph->addPass(Passes::graphicsGBufferPass());
-    Pass* lightingPass  = graph->addPass(Passes::graphicsLightingPass());
-    Pass* aoPass        = graph->addPass(Passes::computeAmbientOcclusion());
-    Pass* compPass      = graph->addPass(Passes::utilCompositionPass());
-    Pass* presentPass   = graph->addPass(Passes::sentinelPresentPass());
-
-    std::vector<bool> edgeInserts;
-
-    edgeInserts.append_range(std::vector {
-        graph->insertEdge(beginPass, "scene", gBufferPass, "scene"),
-
-        graph->insertEdge(gBufferPass, "positionImage", lightingPass, "positionImage"),
-        graph->insertEdge(gBufferPass, "normalImage", lightingPass, "normalImage"),
-        graph->insertEdge(gBufferPass, "albedoImage", lightingPass, "albedoImage"),
-
-        graph->insertEdge(gBufferPass, "positionImage", aoPass, "positionImage"),
-        graph->insertEdge(gBufferPass, "normalImage", aoPass, "normalImage"),
-
-        graph->insertEdge(lightingPass, "lightingResult", compPass, "imageA"),
-        graph->insertEdge(aoPass, "ambientOcclusionImage", compPass, "imageB"),
-
-        graph->insertEdge(compPass, "combined", presentPass, "presentImage"),
-    });
-
-    if (!std::ranges::all_of(edgeInserts, [](const bool& val){ return val == true;}))
-    {
-        throw std::runtime_error("Some edge insertions failed");
-    }
-
-    return graph;
-}
-
-inline RenderGraph* createExampleGraph2()
-{
-    auto* graph = new RenderGraph();
-
-    Pass* beginPass     = graph->addPass(Passes::sentinelBeginPass());
-    Pass* someCompute   = graph->addPass(Passes::computeExample());
-    Pass* gBufferPass   = graph->addPass(Passes::graphicsGBufferPass());
-    Pass* lightingPass  = graph->addPass(Passes::graphicsLightingPass());
-    Pass* aoPass        = graph->addPass(Passes::computeAmbientOcclusion());
-    Pass* compPass      = graph->addPass(Passes::utilCompositionPass());
-    Pass* aaPass        = graph->addPass(Passes::graphicsAntiAliasingPass());
-    Pass* compPass2     = graph->addPass(Passes::utilCompositionPass());
-    Pass* presentPass   = graph->addPass(Passes::sentinelPresentPass());
-
-    std::vector<bool> edgeInserts;
-
-    edgeInserts.append_range(std::vector {
-        graph->insertEdge(beginPass, "scene", gBufferPass, "scene"),
-
-        graph->insertEdge(beginPass, "scene", someCompute, "scene"),
-
-        graph->insertEdge(gBufferPass, "positionImage", lightingPass, "positionImage"),
-        graph->insertEdge(gBufferPass, "normalImage", lightingPass, "normalImage"),
-        graph->insertEdge(gBufferPass, "albedoImage", lightingPass, "albedoImage"),
-
-        graph->insertEdge(gBufferPass, "positionImage", aoPass, "positionImage"),
-        graph->insertEdge(gBufferPass, "normalImage", aoPass, "normalImage"),
-
-        graph->insertEdge(lightingPass, "lightingResult", compPass, "imageA"),
-        graph->insertEdge(aoPass, "ambientOcclusionImage", compPass, "imageB"),
-
-        graph->insertEdge(compPass, "combined", aaPass, "aaInput"),
-        graph->insertEdge(gBufferPass, "motionVectors", aaPass, "motionVectors"),
-
-        graph->insertEdge(aaPass, "aaOutput", compPass2, "imageA"),
-        graph->insertEdge(someCompute, "someImage", compPass2, "imageB"),
-
-        graph->insertEdge(compPass2, "combined", presentPass, "presentImage"),
-    });
-
-    if (!std::ranges::all_of(edgeInserts, [](const bool& val){ return val == true;}))
-    {
-        throw std::runtime_error("Some edge insertions failed");
-    }
-
-    return graph;
-}
+std::unique_ptr<RenderGraph> createExampleGraph2();
