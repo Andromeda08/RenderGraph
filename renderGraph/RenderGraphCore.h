@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <ranges>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -136,21 +135,9 @@ struct Pass final : Vertex
 
     Id_t getId() const { return mId; }
 
-    Resource* getResource(const std::string& resourceName)
-    {
-        const auto it = std::ranges::find_if(dependencies, [&resourceName](const Resource& resource) {
-            return resource.name == resourceName;
-        });
-        return &(*it);
-    }
+    Resource* getResource(const std::string& resourceName);
 
-    Resource* getResource(const Id_t resourceId)
-    {
-        const auto it = std::ranges::find_if(dependencies, [&resourceId](const Resource& resource) {
-            return resource.id == resourceId;
-        });
-        return &(*it);
-    }
+    Resource* getResource(Id_t resourceId);
 
     std::string             name;
     PassFlags               flags;
