@@ -138,7 +138,7 @@ private:
         for (const auto& edge : mRenderGraph->mEdges)
         {
             const auto duplicated = mRenderGraph->mEdges
-                | std::views::filter([edge](const Edge& e) {
+                | std::views::filter([&edge](const Edge& e) {
                     return edge.id != e.id
                         && edge.src->mId == e.src->mId
                         && edge.dst->mId == e.src->mId;
@@ -361,7 +361,7 @@ private:
     static RGCompilerResult<Pass*> getRootNode(RenderGraph& renderGraph)
     {
         const auto beginPass = std::ranges::find_if(renderGraph.mVertices,[](const auto& pass) {
-            return pass->flags.sentinel && pass->name == rgRootPassName;
+            return pass->flags.sentinel && pass->name == rgRootPass;
         });
 
         if (beginPass == std::end(renderGraph.mVertices))
