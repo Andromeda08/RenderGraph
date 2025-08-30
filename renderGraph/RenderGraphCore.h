@@ -157,12 +157,7 @@ struct Edge
 {
     Id_t        id;
     Pass*       src;
-    [[deprecated("use pSrcRes")]] Id_t        srcRes;
-    [[deprecated("use pSrcRes")]] std::string srcResName;
     Pass*       dst;
-    [[deprecated("use pDstRes")]] Id_t        dstRes;
-    [[deprecated("use pDstRes")]] std::string dstResName;
-
     Resource*   pSrcRes = nullptr;
     Resource*   pDstRes = nullptr;
 };
