@@ -7,7 +7,7 @@
 
 int main()
 {
-    RenderGraph* renderGraph;
+    std::unique_ptr<RenderGraph> renderGraph;
 
     try {
         renderGraph = createExampleGraph2();
@@ -20,7 +20,7 @@ int main()
     constexpr RGCompilerOptions compilerOptions = {
         .allowParallelization = true,
     };
-    const RenderGraphCompiler compiler(renderGraph, compilerOptions);
+    const RenderGraphCompiler compiler(renderGraph.get(), compilerOptions);
     try {
         auto result = compiler.compile();
     } catch (const std::exception& e) {
