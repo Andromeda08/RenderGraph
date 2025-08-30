@@ -20,6 +20,8 @@ add_executable(graphCompilerPrototype main.cpp
     renderGraph/export/RGCompilerExport.cpp
     renderGraph/Graph.cpp
     platform/std.h
+    renderGraph/RenderGraph.cpp
+    renderGraph/RenderGraphCore.cpp
 )
 
 target_precompile_headers(graphCompilerPrototype PRIVATE platform/std.h)
