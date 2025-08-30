@@ -1,94 +1,7 @@
 #pragma once
 
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <vector>
-
-#include "Graph.h"
 #include "IdSequence.h"
-
-#ifdef rg_JSON_EXPORT
-    #include <nlohmann/json.hpp>
-#endif
-
-// =======================================
-// Constants
-// =======================================
-constexpr int32_t          rgInvalidId    = -1;
-constexpr std::string_view rgRootPassName = "Root";
-
-// =======================================
-// Resources
-// =======================================
-
-enum class AccessType
-{
-    Read,
-    Write,
-    None,
-};
-#ifdef rg_JSON_EXPORT
-NLOHMANN_JSON_SERIALIZE_ENUM(AccessType, {
-    {AccessType::Read,  "read" },
-    {AccessType::Write, "write"},
-    {AccessType::None,  "none" },
-})
-#endif
-
-enum class ResourceType
-{
-    Unknown,
-    Image,
-    Buffer,
-    External,
-};
-
-struct ResourceFlags
-{
-    bool dontOptimize = false;  // Don't consider this resource during Resource Optimization phase.
-};
-
-/**
- * (1) "Resource" can now be simple as this, as the exact specifications are only required for
- * pass-specific resource allocation, as Images are now memory aliased.
- * (2) This can now be used to represent both pass-specific resources and render graph resources.
- * (GPU resource vs GPU memory)
- * (3) AccessType is ignored for resources of type "External". This is because the RenderGraph is not responsible
- * for managing an external resources state, neither are external resources required to be GPU resources.
- */
-struct Resource
-{
-    int32_t         id = rgInvalidId;
-    std::string     name;
-    ResourceType    type;
-    AccessType      access;
-    ResourceFlags   flags = {};
-};
-
-// =======================================
-// Passes
-// =======================================
-
-struct PassFlags
-{
-    bool raster     = false;    // Any pass that's not Async or Compute
-    bool compute    = false;    // Compute Pass
-    bool async      = false;    // Async Pass
-    bool neverCull  = false;    // Don't allow the culling of the pass
-    bool sentinel   = false;    // Begin / Present "Pass"
-};
-
-struct Pass final : Vertex
-{
-    ~Pass() override = default;
-
-    std::string             name;
-    PassFlags               flags;
-    std::vector<Resource>   dependencies;
-};
-
-using PassPtr = std::unique_ptr<Pass>;
+#include "RenderGraphCore.h"
 
 namespace Passes
 {
@@ -224,7 +137,7 @@ namespace Passes
         auto pass = std::make_unique<Pass>();
 
         pass->mId = IdSequence::next();
-        pass->name = "Present Pass";
+        pass->name = rgPresentPass;
         pass->flags = {
             .raster = true,
             .neverCull = true,
@@ -244,7 +157,7 @@ namespace Passes
         auto pass = std::make_unique<Pass>();
 
         pass->mId = IdSequence::next();
-        pass->name = rgRootPassName;
+        pass->name = rgRootPass;
         pass->flags = {
             .neverCull = true,
             .sentinel = true,
