@@ -26,31 +26,30 @@ void RenderGraphExport::exportMermaid(const RenderGraph* renderGraph)
         {
             if (node->mId == edge.src->mId)
             {
-                const auto res = std::ranges::find_if(node->dependencies, [&](const Resource& resource){ return resource.name == edge.srcResName; });
+                const auto res = std::ranges::find_if(node->dependencies, [&](const Resource& resource){ return resource.name == edge.pSrcRes->name; });
                 const auto type = res->type;
                 output.emplace_back(std::format("{}({}):::{}",
-                    std::format("{}{}", edge.srcRes, edge.srcResName),
-                    edge.srcResName,
+                    std::format("{}{}", edge.pSrcRes->id, edge.pSrcRes->name),
+                    edge.pSrcRes->name,
                     type == ResourceType::Image ? "resImage" : "resOther"));
             }
         }
     }
 
-    std::set<std::pair<Id_t, std::string>> edges;
     for (const auto& start : renderGraph->mVertices)
     {
         for (const auto& edge : renderGraph->mEdges)
         {
             if (start->mId == edge.src->mId)
             {
-                const auto edge1 = std::format("{} --> {}", start->mId, std::format("{}{}", edge.srcRes, edge.srcResName));
-                if (const auto it = std::ranges::find_if(output, [&edge1](const std::string& str){ return str == edge1; });
+                const auto edge1 = std::format("{} --> {}", start->mId, std::format("{}{}", edge.pSrcRes->id, edge.pSrcRes->name));
+                if (const auto it = std::ranges::find_if(output, [&edge1](const std::string_view str){ return str == edge1; });
                     it == std::end(output))
                 {
                     output.push_back(edge1);
                 }
-                const auto edge2 = std::format("{} --> {}", std::format("{}{}", edge.srcRes, edge.srcResName), edge.dst->mId);
-                if (const auto it = std::ranges::find_if(output, [&edge2](const std::string& str){ return str == edge2; });
+                const auto edge2 = std::format("{} --> {}", std::format("{}{}", edge.pSrcRes->id, edge.pSrcRes->name), edge.dst->mId);
+                if (const auto it = std::ranges::find_if(output, [&edge2](const std::string_view str){ return str == edge2; });
                     it == std::end(output))
                 {
                     output.push_back(edge2);

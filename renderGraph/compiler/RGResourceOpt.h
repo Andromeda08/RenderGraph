@@ -109,12 +109,12 @@ private:
             {
                 if (   resourceInfo.originNodeId         != edge.src->mId
                     || resourceInfo.originNodeId         == edge.dst->mId
-                    || resourceInfo.originResource->id   != edge.srcRes
+                    || resourceInfo.originResource->id   != edge.pSrcRes->id
                 ) continue;
 
                 int32_t consumerNodeId     = edge.dst->mId;
                 const auto consumerResource = std::ranges::find_if(edge.dst->dependencies, [&](const Resource& res){
-                    return res.id == edge.dstRes;
+                    return res.id == edge.pDstRes->id;
                 });
                 const int32_t consumerResourceId = consumerResource->id;
 
@@ -131,7 +131,7 @@ private:
                     .nodeIdx      = consumerNodeIdx,
                     .nodeName     = consumerNode->name,
                     .resourceId   = consumerResourceId,
-                    .resourceName = edge.dstResName,
+                    .resourceName = edge.pDstRes->name,
                     .access       = consumerResource->access,
                     .node         = consumerNode,
                 };

@@ -43,11 +43,7 @@ bool RenderGraph::insertEdge(Pass* src, const std::string& srcRes, Pass* dst, co
     src->mOutgoingEdges.push_back(dst);
     dst->mIncomingEdges.push_back(src);
 
-    mEdges.emplace_back(IdSequence::next(),
-                        src, pSrcRes->id, pSrcRes->name,
-                        dst, pDstRes->id, pDstRes->name,
-                        pSrcRes,
-                        pDstRes);
+    mEdges.emplace_back(IdSequence::next(), src,dst, pSrcRes, pDstRes);
 
     return true;
 }
