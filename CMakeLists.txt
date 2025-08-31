@@ -22,6 +22,7 @@ add_executable(graphCompilerPrototype main.cpp
     platform/std.h
     renderGraph/RenderGraph.cpp
     renderGraph/RenderGraphCore.cpp
+    renderGraph/compiler/RGBarrierGen.h
 )
 
 target_precompile_headers(graphCompilerPrototype PRIVATE platform/std.h)

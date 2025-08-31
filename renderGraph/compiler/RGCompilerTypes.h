@@ -51,6 +51,14 @@ struct RGResourceTemplate
     std::vector<RGResourceLink> links;
 };
 
+static bool isUsedByTask(const RGResourceTemplate& resourceTemplate, const RGTask& task)
+{
+    return std::ranges::find_if(resourceTemplate.links, [&task](const RGResourceLink& link) {
+        return task.pass->getId() == link.srcPass
+            || (task.asyncPass && task.asyncPass->getId() == link.srcPass);
+    }) != std::end(resourceTemplate.links);
+}
+
 // =======================================
 #include "RGResourceOptTypes.h"
 // =======================================
