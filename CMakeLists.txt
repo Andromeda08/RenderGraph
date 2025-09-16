@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 23)
 
 # add_subdirectory(external/json)
 
+add_subdirectory(rhiPrototype)
+
 add_executable(graphCompilerPrototype main.cpp
     renderGraph/InputData.h
     renderGraph/IdSequence.h
