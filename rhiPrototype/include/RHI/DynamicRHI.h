@@ -1,6 +1,6 @@
 #pragma once
 
-#include "rhi.h"
+#include "RHI.h"
 
 nbl_INTERFACE(DynamicRHI,
     virtual void waitIdle() = 0;

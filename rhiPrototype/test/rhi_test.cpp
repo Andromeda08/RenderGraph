@@ -1,6 +1,6 @@
 #include <algorithm>
 #include <iostream>
-#include <rhi/def.h>
+#include <RHI/Definitions.h>
 
 #include "test.h"
 
@@ -12,7 +12,7 @@ int32_t test_DescriptorLayout_HashEquivalency()
                 .binding        = 0,
                 .count          = 1,
                 .descriptorType = RHIDescriptorType::CombinedImageSampler,
-                .shaderStages   = RHIShaderBits::Any,
+                .shaderStages   = RHIShaderBits::All,
             },
         },
     };
