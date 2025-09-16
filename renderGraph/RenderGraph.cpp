@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <iostream>
 #include <ranges>
 #include "InputData.h"
 
@@ -110,8 +111,11 @@ Pass* RenderGraph::getPassById(const Id_t id) const noexcept
         : pass->get();
 }
 
-RenderGraph RenderGraph::createCopy(const RenderGraph& renderGraph)
+RenderGraph RenderGraph::createCopy(const RenderGraph& renderGraph rg_TRACE_PARAMS)
 {
+    static std::set sWhitelist = { "getParallelizableTasks" };
+    rg_CALL_GUARD(file, line, callerFn, sWhitelist, "This function should only be called from RenderGraphCompiler.");
+
     RenderGraph copyGraph;
 
     for (const auto& node : renderGraph.mVertices)

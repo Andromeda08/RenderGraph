@@ -14,6 +14,34 @@
 
 
 // =======================================
+// Render Graph : Macros
+// =======================================
+#define rg_TRACE
+
+// The following macros are for debugging / validation purposes.
+#ifdef rg_TRACE
+    // Declare trace parameters in a function declaration
+    #define rg_DECL_TRACE_PARAMS , const char* file = __builtin_FILE(), int line = __builtin_LINE(), const char* callerFn = __builtin_FUNCTION()
+
+    // Declare trace parameters for a function implementation
+    #define rg_TRACE_PARAMS , const char* file, int line, const char* callerFn
+
+    // Assert that a function was called from one that is allowed to call it.
+    #define rg_CALL_GUARD(file, line, callerFn, whitelist, message) \
+        if (!whitelist.contains(callerFn)) \
+        { \
+            const std::filesystem::path path {file}; \
+            std::println("!!! Function {} was called from {} (file: {}, line: {}) : {}", \
+                __builtin_FUNCTION(), callerFn, path.filename().c_str(), line, message); \
+            exit(EXIT_FAILURE); \
+        }
+#else
+    #define rg_DECL_TRACE_PARAMS
+    #define rg_TRACE_PARAMS
+    #define rg_CALL_GUARD(file, line, callerFn, whitelist, message)
+#endif
+
+// =======================================
 // Render Graph : Forward Decl., Constants
 // =======================================
 struct Pass;

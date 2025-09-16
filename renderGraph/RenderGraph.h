@@ -62,9 +62,9 @@ private:
 
     /**
      * Create a 1-1 copy of the specified RenderGraph
-     * (Warning: IDs are also copied, this should be used by only the Compiler!)
+     * (Warning: IDs are also copied, this should be used when a 1-1 copy of the graph is required!)
      */
-    static RenderGraph createCopy(const RenderGraph& renderGraph);
+    static RenderGraph createCopy(const RenderGraph& renderGraph rg_DECL_TRACE_PARAMS);
 
     std::vector<PassPtr> mVertices;
     std::vector<Edge>    mEdges;
